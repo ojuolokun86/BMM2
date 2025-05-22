@@ -143,14 +143,13 @@ const repostViewOnceMedia = async (sock, detectedMedia, userId) => {
  * @returns {object|null} - An object with mediaType and fullMessage or null if not found.
  */
 // ...existing code...
+// ...existing code...
 const detectViewOnceMedia = (message) => {
   console.log('🔍 Detecting view-once media...');
   console.log('Message structure:', JSON.stringify(message, null, 2));
 
   // 1. Check if this is a direct view-once message (top-level)
   const directViewOnceMsg = message.message?.viewOnceMessage?.message;
-  console.log('Direct view-once message:', directViewOnceMsg);
-  console.log('Direct view-once message structure:', JSON.stringify(directViewOnceMsg, null, 2));
   if (directViewOnceMsg) {
     const mediaType = Object.keys(directViewOnceMsg).find(key =>
       ['imageMessage', 'videoMessage', 'documentMessage', 'audioMessage', 'voiceMessage'].includes(key)
@@ -161,7 +160,7 @@ const detectViewOnceMedia = (message) => {
     }
   }
 
-  // 1b. NEW: Check for direct media message with viewOnce flag
+  // 1b. Check for direct media message with viewOnce flag (iPhone)
   const directMediaTypes = ['imageMessage', 'videoMessage', 'documentMessage', 'audioMessage', 'voiceMessage'];
   for (const type of directMediaTypes) {
     const media = message.message?.[type];
@@ -173,8 +172,25 @@ const detectViewOnceMedia = (message) => {
 
   // 2. Check if this is a reply to a view-once message (quoted message)
   const contextInfo = message.message?.extendedTextMessage?.contextInfo;
-  const quotedId = contextInfo?.stanzaId;
+  const quotedMsg = contextInfo?.quotedMessage;
+  if (quotedMsg) {
+    for (const type of directMediaTypes) {
+      const media = quotedMsg[type];
+      // Check for both wrapped and direct view-once in quoted message
+      if (media && (media.viewOnce || quotedMsg?.viewOnceMessage)) {
+        console.log(`✅ Detected quoted ${type} with viewOnce flag`);
+        return { mediaType: type, fullMessage: { message: quotedMsg, key: { ...message.key } } };
+      }
+      // If quotedMsg is a viewOnceMessage wrapper
+      if (quotedMsg?.viewOnceMessage?.message?.[type]) {
+        console.log(`✅ Detected quoted viewOnceMessage of type: ${type}`);
+        return { mediaType: type, fullMessage: { message: quotedMsg, key: { ...message.key } } };
+      }
+    }
+  }
 
+  // 3. Check if this is a reply to a stored view-once message
+  const quotedId = contextInfo?.stanzaId;
   if (quotedId && viewOnceMediaStore[quotedId]) {
     const stored = viewOnceMediaStore[quotedId];
     console.log(`🔍 Found stored view-once media with ID: ${quotedId}`);
@@ -182,7 +198,7 @@ const detectViewOnceMedia = (message) => {
     return {
       mediaType: stored.mediaType,
       fullMessage: {
-        message: { [stored.mediaType]: stored.buffer ? stored.buffer : {} }, 
+        message: { [stored.mediaType]: stored.buffer ? stored.buffer : {} },
         key: { id: quotedId, remoteJid: message.key.remoteJid }
       },
       stored,
@@ -192,6 +208,7 @@ const detectViewOnceMedia = (message) => {
   console.log('❌ No view-once media found in message or reply.');
   return null;
 };
+// ...existing code...
 // ...existing code...
 
 module.exports = {
