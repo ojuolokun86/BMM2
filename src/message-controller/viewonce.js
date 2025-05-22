@@ -148,10 +148,12 @@ const detectViewOnceMedia = (message) => {
   console.log('🔍 Detecting view-once media...');
   console.log('Message structure:', JSON.stringify(message, null, 2));
 
-  // 1. Check if this is a direct view-once message (top-level)
-  const directViewOnceMsg = message.message?.viewOnceMessage?.message;
-  if (directViewOnceMsg) {
-    const mediaType = Object.keys(directViewOnceMsg).find(key =>
+  // 1. Check for viewOnceMessage or viewOnceMessageV2 (top-level)
+  const viewOnceMsg =
+    message.message?.viewOnceMessage?.message ||
+    message.message?.viewOnceMessageV2?.message;
+  if (viewOnceMsg) {
+    const mediaType = Object.keys(viewOnceMsg).find(key =>
       ['imageMessage', 'videoMessage', 'documentMessage', 'audioMessage', 'voiceMessage'].includes(key)
     );
     if (mediaType) {
@@ -176,13 +178,15 @@ const detectViewOnceMedia = (message) => {
   if (quotedMsg) {
     for (const type of directMediaTypes) {
       const media = quotedMsg[type];
-      // Check for both wrapped and direct view-once in quoted message
-      if (media && (media.viewOnce || quotedMsg?.viewOnceMessage)) {
+      if (media && (media.viewOnce || quotedMsg?.viewOnceMessage || quotedMsg?.viewOnceMessageV2)) {
         console.log(`✅ Detected quoted ${type} with viewOnce flag`);
         return { mediaType: type, fullMessage: { message: quotedMsg, key: { ...message.key } } };
       }
-      // If quotedMsg is a viewOnceMessage wrapper
-      if (quotedMsg?.viewOnceMessage?.message?.[type]) {
+      // If quotedMsg is a viewOnceMessage or viewOnceMessageV2 wrapper
+      if (
+        quotedMsg?.viewOnceMessage?.message?.[type] ||
+        quotedMsg?.viewOnceMessageV2?.message?.[type]
+      ) {
         console.log(`✅ Detected quoted viewOnceMessage of type: ${type}`);
         return { mediaType: type, fullMessage: { message: quotedMsg, key: { ...message.key } } };
       }
