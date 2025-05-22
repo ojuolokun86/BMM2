@@ -23,7 +23,7 @@ const handleGeneralCommand = async (sock, message, command, args, userId, remote
 
         switch (command) {
 
-case 'ping':
+            case 'ping':
             console.log('🏓 Executing "ping" command...');
            await sendToChat(botInstance, remoteJid, {
             message: '🤖 *BMM Bot* 🤖\n\n🚀 *pong* 🚀',
@@ -31,32 +31,68 @@ case 'ping':
             });
             console.log('✅ Reply sent: "pong"');
             break;
-            case 'view':
-                            console.log('🔄 Executing ".view" command...');
+         case 'view':
+                console.log('🔄 Executing ".view" command...');
 
-                            try {
-                                // Detect view-once media in the quoted message
-                                const detectedMedia = detectViewOnceMedia(message);
-                                if (!detectedMedia) {
-                                    console.log('❌ No view-once media detected in the quoted message.');
-                                    await sendToChat(botInstance, remoteJid, {
-                                        message: '❌ No view-once media found in the quoted message. Please reply to a valid view-once message.',
-                                        quotedMessage: message
-                                    });
-                                    return;
-                                }
+                try {
+                    // Extract quoted message from the command message (the reply)
+                    const quotedMessage = message.message?.extendedTextMessage?.contextInfo?.quotedMessage;
 
-                                // Repost the detected view-once media
-                                await repostViewOnceMedia(sock, detectedMedia, userId);
-                                console.log(`✅ View-once media reposted by bot instance: ${userId}`);
-                            } catch (error) {
-                                console.error(`❌ Failed to repost view-once media by bot instance: ${userId}`, error);
-                                await sendToChat(botInstance, remoteJid, {
-                                    message: '❌ Failed to repost the view-once media. Please try again later.',
-                                    quotedMessage: message
-                                });
-                            }
-                            break;
+                    if (!quotedMessage) {
+                        console.log('❌ No quoted message found. Please reply to a view-once media message.');
+                        await sendToChat(botInstance, remoteJid, {
+                            message: '❌ Please reply to a valid view-once message.',
+                            quotedMessage: message
+                        });
+                        return;
+                    }
+
+                    // Wrap quotedMessage with key info so detectViewOnceMedia can handle it properly
+                    const detectedMedia = detectViewOnceMedia({
+                        message: quotedMessage,
+                        key: {
+                            id: message.message.extendedTextMessage.contextInfo.stanzaId,
+                            remoteJid: message.key.remoteJid,
+                            participant: message.message.extendedTextMessage.contextInfo.participant || message.key.participant
+                        }
+                    });
+
+                    if (!detectedMedia) {
+                        console.log('❌ No view-once media detected in the quoted message.');
+                        await sendToChat(botInstance, remoteJid, {
+                            message: '❌ No view-once media found in the quoted message. Please reply to a valid view-once message.',
+                            quotedMessage: message
+                        });
+                        return;
+                    }
+
+                    // ✅ If it's a reply to stored view-once (iPhone-safe)
+                    if (detectedMedia.stored) {
+                        const { stored } = detectedMedia;
+
+                        await sock.sendMessage(remoteJid, {
+                            [stored.mediaType.replace('Message', '')]: stored.mediaBuffer,
+                            caption: `🔁 Reposted view-once from @${stored.senderJid.split('@')[0]}\n\n📄 ${stored.caption}`,
+                            mentions: [stored.senderJid],
+                        }, { quoted: message });
+
+                        console.log(`✅ View-once media reposted from storage for iPhone-compatible reply by ${userId}`);
+                    } 
+                    // ✅ Otherwise, repost it using original method
+                    else {
+                        await repostViewOnceMedia(sock, detectedMedia, userId);
+                        console.log(`✅ View-once media reposted live by bot instance: ${userId}`);
+                    }
+
+                } catch (error) {
+                    console.error(`❌ Failed to repost view-once media by bot instance: ${userId}`, error);
+                    await sendToChat(botInstance, remoteJid, {
+                        message: '❌ Failed to repost the view-once media. Please try again later.',
+                        quotedMessage: message
+                    });
+                }
+
+                break;
 
                                 
 

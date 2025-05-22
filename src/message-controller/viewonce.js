@@ -13,16 +13,15 @@ const path = require('path');
  * @param {object} message - The incoming message object.
  */
 const handleViewOnceMessage = async (sock, message) => {
-    const remoteJid = message.key.remoteJid; // Chat ID
-    const messageId = message.key.id; // Unique message ID
-    const messageType = Object.keys(message.message?.viewOnceMessage?.message || {})[0]; // Get the type of the media
+    const remoteJid = message.key.remoteJid;
+    const messageId = message.key.id;
+    const messageType = Object.keys(message.message?.viewOnceMessage?.message || {})[0];
 
     if (!messageType) {
         console.log('❌ No media found in the view-once message.');
         return;
     }
 
-    // Check if the media type is supported
     const supportedMediaTypes = ['imageMessage', 'videoMessage', 'documentMessage', 'audioMessage', 'voiceMessage'];
     if (!supportedMediaTypes.includes(messageType)) {
         console.log(`❌ Unsupported media type: ${messageType}`);
@@ -30,30 +29,52 @@ const handleViewOnceMessage = async (sock, message) => {
     }
 
     try {
-        // Store the full message object and media type in the global store
+        const mediaContent = message.message.viewOnceMessage.message[messageType];
+
+        if (!mediaContent?.directPath || !mediaContent?.mediaKey) {
+            console.error('❌ Missing mediaKey or directPath.');
+            return;
+        }
+
+        console.log('⬇️ Downloading view-once media for storage...');
+        const buffer = await downloadMediaMessage(
+            { message: { [messageType]: mediaContent }, key: message.key },
+            'buffer',
+            { logger: console }
+        );
+
         viewOnceMediaStore[messageId] = {
-            fullMessage: message, // Store the full message object for later use
+            mediaBuffer: buffer,
             mediaType: messageType,
+            caption: mediaContent.caption || '',
+            senderJid: message.key.participant || message.key.remoteJid,
+            timestamp: Date.now(),
+            fileName: mediaContent.fileName || 'file',
         };
 
-        console.log(`✅ View-once media details stored for message ID: ${messageId}, Media Type: ${messageType}`);
-    } catch (error) {
-        console.error('❌ Failed to handle view-once message:', error);
+        console.log(`✅ Stored full view-once media from ${remoteJid} (type: ${messageType})`);
+    } catch (err) {
+        console.error('❌ Failed to handle view-once message:', err);
     }
 };
 
 
 
+
 const repostViewOnceMedia = async (sock, detectedMedia, userId) => {
     try {
-        const { fullMessage, mediaType } = detectedMedia; // Use the detected media directly
-        const mediaContent = fullMessage.message?.viewOnceMessage?.message?.[mediaType];
+        const { fullMessage, mediaType } = detectedMedia;
+
+        // Support both wrapped and direct view-once media
+        let mediaContent =
+            fullMessage.message?.viewOnceMessage?.message?.[mediaType] ||
+            fullMessage.message?.[mediaType];
 
         // Correctly identify the original sender's JID
         const senderJid =
-            fullMessage.message?.extendedTextMessage?.contextInfo?.participant || // Original sender in quoted message
-            fullMessage.key.participant || // Sender in group messages
-            fullMessage.key.remoteJid; // Fallback to remote JID
+            fullMessage.message?.extendedTextMessage?.contextInfo?.participant ||
+            fullMessage.key.participant ||
+            fullMessage.key.remoteJid;
 
         console.log(`🔍 Original sender JID: ${senderJid}`);
 
@@ -117,49 +138,61 @@ const repostViewOnceMedia = async (sock, detectedMedia, userId) => {
     }
 };
 /**
- * Detect view-once media in a message.
+ * Detect view-once media in a message or its quoted reply.
  * @param {object} message - The incoming message object.
  * @returns {object|null} - An object with mediaType and fullMessage or null if not found.
  */
+// ...existing code...
 const detectViewOnceMedia = (message) => {
-    console.log('🔍 Detecting view-once media...');
-   
+  console.log('🔍 Detecting view-once media...');
+  console.log('Message structure:', JSON.stringify(message, null, 2));
 
-    // Case 1: Direct top-level viewOnceMessage
-    const directViewOnce = message.message?.viewOnceMessage?.message;
-    if (directViewOnce) {
-        const mediaType = Object.keys(directViewOnce).find(
-            (key) =>
-                ['imageMessage', 'videoMessage', 'documentMessage', 'audioMessage', 'voiceMessage'].includes(key)
-        );
-        if (mediaType) {
-            console.log(`✅ Detected top-level view-once message of type: ${mediaType}`);
-            return { mediaType, fullMessage: message };
-        }
+  // 1. Check if this is a direct view-once message (top-level)
+  const directViewOnceMsg = message.message?.viewOnceMessage?.message;
+  console.log('Direct view-once message:', directViewOnceMsg);
+  console.log('Direct view-once message structure:', JSON.stringify(directViewOnceMsg, null, 2));
+  if (directViewOnceMsg) {
+    const mediaType = Object.keys(directViewOnceMsg).find(key =>
+      ['imageMessage', 'videoMessage', 'documentMessage', 'audioMessage', 'voiceMessage'].includes(key)
+    );
+    if (mediaType) {
+      console.log(`✅ Detected direct view-once media of type: ${mediaType}`);
+      return { mediaType, fullMessage: message };
     }
+  }
 
-    // Case 2: Quoted viewOnceMessage
-    const quotedMessage = message.message?.extendedTextMessage?.contextInfo?.quotedMessage;
-    if (quotedMessage) {
-        const mediaType = Object.keys(quotedMessage).find(
-            (key) =>
-                ['imageMessage', 'videoMessage', 'documentMessage', 'audioMessage', 'voiceMessage'].includes(key)
-        );
-        if (mediaType && quotedMessage[mediaType]?.viewOnce) {
-            console.log(`✅ Detected quoted view-once message of type: ${mediaType}`);
-            return {
-                mediaType,
-                fullMessage: {
-                    message: { viewOnceMessage: { message: { [mediaType]: quotedMessage[mediaType] } } },
-                    key: message.key,
-                },
-            };
-        }
+  // 1b. NEW: Check for direct media message with viewOnce flag
+  const directMediaTypes = ['imageMessage', 'videoMessage', 'documentMessage', 'audioMessage', 'voiceMessage'];
+  for (const type of directMediaTypes) {
+    const media = message.message?.[type];
+    if (media && media.viewOnce) {
+      console.log(`✅ Detected direct ${type} with viewOnce flag`);
+      return { mediaType: type, fullMessage: message };
     }
+  }
 
-    console.log('❌ No view-once message found.');
-    return null;
+  // 2. Check if this is a reply to a view-once message (quoted message)
+  const contextInfo = message.message?.extendedTextMessage?.contextInfo;
+  const quotedId = contextInfo?.stanzaId;
+
+  if (quotedId && viewOnceMediaStore[quotedId]) {
+    const stored = viewOnceMediaStore[quotedId];
+    console.log(`🔍 Found stored view-once media with ID: ${quotedId}`);
+    console.log(`✅ Detected view-once via reply to stored message: ${quotedId}`);
+    return {
+      mediaType: stored.mediaType,
+      fullMessage: {
+        message: { [stored.mediaType]: stored.buffer ? stored.buffer : {} }, 
+        key: { id: quotedId, remoteJid: message.key.remoteJid }
+      },
+      stored,
+    };
+  }
+
+  console.log('❌ No view-once media found in message or reply.');
+  return null;
 };
+// ...existing code...
 
 module.exports = {
     handleViewOnceMessage,
