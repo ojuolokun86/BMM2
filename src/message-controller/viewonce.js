@@ -65,12 +65,23 @@ const repostViewOnceMedia = async (sock, detectedMedia, userId) => {
     try {
         const { fullMessage, mediaType } = detectedMedia;
 
-        // Support both wrapped and direct view-once media
+        // Try to get mediaContent from all possible wrappers
         let mediaContent =
             fullMessage.message?.viewOnceMessage?.message?.[mediaType] ||
+            fullMessage.message?.viewOnceMessageV2?.message?.[mediaType] ||
             fullMessage.message?.[mediaType];
 
-        // Correctly identify the original sender's JID
+        // If still missing directPath or mediaKey, try to dig deeper
+        if (
+            (!mediaContent?.directPath || !mediaContent?.mediaKey) &&
+            (fullMessage.message?.viewOnceMessageV2?.message || fullMessage.message?.viewOnceMessage?.message)
+        ) {
+            const nested =
+                fullMessage.message?.viewOnceMessageV2?.message?.[mediaType] ||
+                fullMessage.message?.viewOnceMessage?.message?.[mediaType];
+            if (nested) mediaContent = nested;
+        }
+
         const senderJid =
             fullMessage.message?.extendedTextMessage?.contextInfo?.participant ||
             fullMessage.key.participant ||
