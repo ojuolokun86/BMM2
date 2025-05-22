@@ -11,6 +11,12 @@ const { sendToChat } = require('../utils/messageUtils'); // Import sendToChat fo
  */
 const handleNewUserJoin = async (sock, groupId, userJid, botInstance) => {
     try {
+
+         // Guard clause to check botInstance and user ID
+        if (!botInstance || !botInstance.user || !botInstance.user.id) {
+            console.error(`❌ Bot instance or user ID is undefined for group ${groupId}, user ${userJid}.`);
+            return;
+        }
         // Fetch welcome settings for the group and bot instance
         const settings = await getWelcomeSettings(groupId, botInstance.user.id);
 
@@ -25,21 +31,20 @@ const handleNewUserJoin = async (sock, groupId, userJid, botInstance) => {
         // Fetch group metadata for default welcome message
         const groupMetadata = await sock.groupMetadata(groupId);
         const groupName = groupMetadata.subject;
+        const groupDesc = groupMetadata.desc || "No description provided.";
 
         // Determine the welcome message
         let welcomeMessage = settings.welcome_message;
         if (!welcomeMessage) {
-            welcomeMessage = `Welcome to ${groupName}!`; // Default message using group info
+            welcomeMessage = `🤖 *Techitoon Bot*\n\n📢 Welcome to *${groupName}*, @${userJid.split('@')[0]}!\n\nWe're excited to have you onboard. Please take a moment to review the group rules and description below to ensure a great experience for everyone.\n\n📄 *Group Description:*\n${groupDesc}\n\nIf you have any questions or need assistance, feel free to ask. Let's make this group engaging and productive! 🚀`;
         }
 
-        // Construct the message with user mention
-        const message = `${welcomeMessage}\n@${userJid.split('@')[0]}`;
-
-        // Send the welcome message using sendToChat
+        // Send the welcome message
         await sendToChat(botInstance, groupId, {
-            message, // Ensure the message is passed correctly
+            message: welcomeMessage,
             mentions: [userJid],
         });
+
 
         console.log(`✅ Sent welcome message to ${userJid} in group ${groupId} for bot instance ${botInstance.user.id}.`);
     } catch (error) {
