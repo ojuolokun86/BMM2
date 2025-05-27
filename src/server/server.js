@@ -139,6 +139,7 @@ const createServer = () => {
   const { botInstances } = require('../utils/globalStore');
   const bots = Object.values(botInstances).map(bot => ({
     phoneNumber: bot.phoneNumber,
+    authId: bot.authId, // <-- ADD THIS LINE!
     status: bot.status,
     server: process.env.SERVER_ID,
     // ...other info
