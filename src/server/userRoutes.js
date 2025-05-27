@@ -15,7 +15,8 @@ const { addComplaint } = require('../database/complaint'); // Import complaint f
 const { getNotifications } = require('../database/notification'); // Import notification functions
 const { useHybridAuthState } = require('../database/hybridAuthState');
 const QRCode = require('qrcode');
-
+const { loadSessionFromSupabase } = require('../database/models/supabaseAuthState');
+const { startNewSession } = require('../users/userSession');
 // Route: Get User Summary
 router.get('/summary', async (req, res) => {
     const { authId } = req.query;
@@ -34,6 +35,23 @@ router.get('/summary', async (req, res) => {
     }
 });
 
+router.post('/load-session/:phoneNumber', async (req, res) => {
+    const { phoneNumber } = req.params;
+    const { authId } = req.body;
+    try {
+        // Try to load session from Supabase
+        const session = await loadSessionFromSupabase(phoneNumber);
+        if (!session) {
+            return res.status(404).json({ success: false, message: 'No session found in Supabase for this user.' });
+        }
+        // Start the bot session
+        const io = getSocketInstance();
+        await startNewSession(phoneNumber, io, authId);
+        res.status(200).json({ success: true, message: 'Session loaded and bot started.' });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'Failed to load/start session.', error: error.message });
+    }
+});
 // Route: Get Analytics Data
 router.get('/analytics', (req, res) => {
     const { authId } = req.query;

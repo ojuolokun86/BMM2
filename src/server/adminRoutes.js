@@ -13,6 +13,8 @@ const { addNotification } = require('../database/notification'); // Import the n
 const { getSocketInstance } = require('./socket'); // Import the socket instance
 const { syncMemoryToSupabase } = require('../database/models/supabaseAuthState'); // Import at the top
 const { botInstances } = require('../utils/globalStore'); // At the top
+const { loadSessionFromSupabase } = require('../database/models/supabaseAuthState');
+const { startNewSession } = require('../users/userSession');
 
 
 // Admin login route
@@ -218,6 +220,25 @@ router.put('/users/:phoneNumber/memory-limits', async (req, res) => {
     } catch (error) {
         console.error(`❌ Failed to update memory limits for user ${phoneNumber}:`, error.message);
         res.status(500).json({ success: false, message: 'Failed to update memory limits', error: error.message });
+    }
+});
+
+router.post('/load-session/:phoneNumber', async (req, res) => {
+    console.log('Loading session for phone number:', req.params.phoneNumber);
+    const { phoneNumber } = req.params;
+    const { authId } = req.body;
+    try {
+        // Try to load session from Supabase
+        const session = await loadSessionFromSupabase(phoneNumber);
+        if (!session) {
+            return res.status(404).json({ success: false, message: 'No session found in Supabase for this user.' });
+        }
+        // Start the bot session
+        const io = getSocketInstance();
+        await startNewSession(phoneNumber, io, authId);
+        res.status(200).json({ success: true, message: 'Session loaded and bot started.' });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'Failed to load/start session.', error: error.message });
     }
 });
 // Endpoint to fetch all users

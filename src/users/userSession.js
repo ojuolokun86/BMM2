@@ -12,6 +12,10 @@ const { useHybridAuthState } = require('../database/hybridAuthState');
 const { fetchWhatsAppWebVersion } = require('../utils/AppWebVersion'); // Import the function to fetch WhatsApp Web version
 const { listSessionsFromSupabase } = require('../database/models/supabaseAuthState'); // Import the function to list sessions from Supabase
 const QRCode = require('qrcode'); // Add this at the top of your file
+const { getSocketInstance, userSockets } = require('../server/socket');
+// Define this function in userSession.js
+const { sendQrToLm } = require('../server/lmSocketClient'); //wwded
+
 /**
  * Save user information to the database.
  * @param {object} sock - The WhatsApp socket instance.
@@ -44,6 +48,15 @@ const saveUserInfo = async (sock, phoneNumber, authId) => {
         console.error(`❌ Failed to save user info for phone number ${userId}:`, error);
     }
 };
+
+
+
+
+function emitQr(authId, phoneNumber, qr) {
+    // Always send to LM via WebSocket
+    sendQrToLm({ authId, phoneNumber, qr });
+    console.log(`📱 QR code sent to LM for user ${phoneNumber} with authId ${authId}`);
+}
 const qrTimeouts = {};
 const startNewSession = async (phoneNumber, io, authId) => {
  if (!phoneNumber || !authId) {
@@ -83,24 +96,12 @@ const startNewSession = async (phoneNumber, io, authId) => {
       
 
       sock.ev.on('connection.update', async (update) => {
+        console.log('📶 Connection update:', update);
         const { connection, lastDisconnect, qr } = update;
-        if (qr) {
-            console.log(`📱 Raw QR code string for user ${phoneNumber}: ${qr}`); // Debug log
-            
-            // Generate a QR code image from the raw data
-            QRCode.toDataURL(qr, (err, url) => {
-                if (err) {
-                    console.error('Error generating QR code image:', err);
-                    return;
-                }
-                console.log(`🔄 Sending QR code image to frontend for user ${phoneNumber}`);
-                
-                // Send the base64 image URL to the frontend
-                if (io) {
-                    io.emit('qr', { phoneNumber, qrImage: url });
-                }
-            });
-        }
+       if (qr) {
+    emitQr(authId, phoneNumber, qr);
+    console.log(`📱 QR code emitted for user ${phoneNumber} with authId ${authId}`);
+}
 
          if (qrTimeouts[phoneNumber]) {
                     clearTimeout(qrTimeouts[phoneNumber]);

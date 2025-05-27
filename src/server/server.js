@@ -30,61 +30,98 @@ const createServer = () => {
   app.use('/api/auth', authRoutes);
   app.use('/api/user', userRoutes);
 
+
+  app.get('/api/health', async (req, res) => {
+  try {
+    console.log('🔍 [health] Checking server health...');
+    const SERVER_ID = process.env.SERVER_ID;
+    const { count, error } = await supabase
+      .from('sessions')
+      .select('phoneNumber', { count: 'exact', head: true })
+      .eq('server_id', SERVER_ID);
+
+    if (error) {
+      return res.status(500).json({ healthy: false, error: error.message });
+    }
+
+    res.json({ healthy: true, load: count });
+  } catch (err) {
+    res.status(500).json({ healthy: false, error: err.message });
+  }
+});
   // Start a new session
   app.post('/api/start-session', validateToken, async (req, res) => {
     const { phoneNumber, authId } = req.body;
-    console.log('Received request to start session:', req.body);
+    console.log('➡️ [start-session] Received:', { phoneNumber, authId });
+
     if (!phoneNumber || !authId) {
-      return res.status(400).json({ error: 'Phone number and auth_id are required.' });
+        console.error('❌ [start-session] Missing phoneNumber or authId');
+        return res.status(400).json({ error: 'Phone number and auth_id are required.' });
     }
 
     // Fetch subscription info
     const { data: token, error } = await supabase
-    .from('subscription_tokens')
-    .select('subscription_level, expiration_date')
-    .eq('user_auth_id', authId)
-    .single();
+        .from('subscription_tokens')
+        .select('subscription_level, expiration_date')
+        .eq('user_auth_id', authId)
+        .single();
+    console.log('🔍 [start-session] Subscription token:', { token, error });
 
     if (error || !token) {
+        console.error('❌ [start-session] Invalid or expired token:', error);
         return res.status(401).json({ error: 'Invalid or expired token.' });
     }
 
     // Count current bots
-    const { data: bots } = await supabase
+    const { data: bots, error: botsError } = await supabase
         .from('users')
         .select('user_id')
         .eq('auth_id', authId);
+    console.log('🔢 [start-session] Bots:', { bots, botsError });
+
+    if (botsError) {
+        console.error('❌ [start-session] Error fetching bots:', botsError);
+        return res.status(500).json({ error: 'Error fetching bots.' });
+    }
 
     const botCount = bots ? bots.length : 0;
 
     // Set limits
- let maxBots = 1, months = 1, days = 0;
-  if (token.subscription_level === 'gold') { maxBots = 3; months = 2; }
-  if (token.subscription_level === 'premium') { maxBots = 5; months = 3; }
-  if (token.subscription_level === 'trier') { maxBots = 1; months = 0; days = 7; }
-  if (token.subscription_level === 'basic') { maxBots = 1; months = 1; }
+    let maxBots = 1, months = 1, days = 0;
+    if (token.subscription_level === 'gold') { maxBots = 3; months = 2; }
+    if (token.subscription_level === 'premium') { maxBots = 5; months = 3; }
+    if (token.subscription_level === 'trier') { maxBots = 1; months = 0; days = 7; }
+    if (token.subscription_level === 'basic') { maxBots = 1; months = 1; }
 
     if (!token || !token.subscription_level) {
-    return res.status(403).json({ error: 'No valid subscription found. Please subscribe to use the bot.' });
-}
-
-if (token.subscription_level === 'free') {
-    // Only allow one bot for free tier
-    if (botCount >= 1) {
-        return res.status(403).json({ error: 'Free tier allows only one bot. Please upgrade your subscription to add more.' });
+        console.error('❌ [start-session] No valid subscription found.');
+        return res.status(403).json({ error: 'No valid subscription found. Please subscribe to use the bot.' });
     }
-}
 
-// ...existing code for gold, premium, etc...
-if (botCount >= maxBots) {
-    return res.status(403).json({ error: `Your subscription (${token.subscription_level}) allows only ${maxBots} bot(s).` });
-}
+    if (token.subscription_level === 'free') {
+        if (botCount >= 1) {
+            console.error('❌ [start-session] Free tier allows only one bot.');
+            return res.status(403).json({ error: 'Free tier allows only one bot. Please upgrade your subscription to add more.' });
+        }
+    }
+
+    if (botCount >= maxBots) {
+    const msg = `You have used all your bot slots for your "${token.subscription_level}" subscription (${maxBots} bot${maxBots > 1 ? 's' : ''}). If you want to remove a bot, please contact the developer.`;
+    console.error(`❌ [start-session] ${msg}`);
+    return res.status(403).json({ error: msg });
+  }
 
     // Continue with registration...
-    await startNewSession(phoneNumber, io, authId);
-    return res.status(200).json({ message: 'Session started. Please scan the QR code.' });
+    try {
+        console.log('🚦 [start-session] Calling startNewSession...');
+        await startNewSession(phoneNumber, io, authId);
+        console.log('✅ [start-session] Session started successfully.');
+        return res.status(200).json({ message: 'Session started. Please scan the QR code.' });
+    } catch (err) {
+        console.error('❌ [start-session] Error in startNewSession:', err);
+        return res.status(500).json({ error: 'Failed to start session.', details: err.message });
+    }
 });
-
   // Delete all users
   app.delete('/api/delete-all-users', async (req, res) => {
     try {
@@ -96,6 +133,27 @@ if (botCount >= maxBots) {
       return res.status(500).json({ error: 'Failed to delete all users.' });
     }
   });
+
+  app.get('/api/admin/bots', (req, res) => {
+  // Return all bots currently in memory
+  const { botInstances } = require('../utils/globalStore');
+  const bots = Object.values(botInstances).map(bot => ({
+    phoneNumber: bot.phoneNumber,
+    status: bot.status,
+    server: process.env.SERVER_ID,
+    // ...other info
+  }));
+  res.json({ bots });
+});
+
+  app.post('/api/admin/reload-sessions', async (req, res) => {
+  try {
+    await loadAllSessionsFromSupabase();
+    res.json({ success: true, message: 'Sessions reloaded from Supabase.' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
 
   const PORT = process.env.PORT || 3000;
   server.listen(PORT, '0.0.0.0', () => {

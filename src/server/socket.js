@@ -9,7 +9,8 @@ const allowedOrigins = [
   "http://localhost:8080",
   "http://127.0.0.1:8080",
   "http://192.168.237.58:8080", // optional: your LAN IP, if needed
-  "https://techitoon.netlify.app" // your production frontend URL
+  "https://techitoonbmm.netlify.app",
+   "https://techitoon.netlify.app" // your production frontend URL
 
 ];
 
@@ -36,13 +37,19 @@ const initializeSocket = (server) => {
     },
   });
 
+  
   io.on('connection', (socket) => {
     console.log(`🔗 New WebSocket connection: ${socket.id}`);
+
+    // Catch-all event logger for debugging
+    socket.onAny((event, ...args) => {
+        console.log(`[BACKEND] Event received from LM: ${event}`, args[0]);
+    });
 
     socket.on('authId', (authId) => {
       console.log(`📥 Received authId: ${authId} for socket: ${socket.id}`);
       userSockets.set(authId, socket.id);
-      socket.join(authId);
+      socket.join(String(authId)); // Join room for this authId
     });
 
     // Live metrics for admin (optional, if needed)
