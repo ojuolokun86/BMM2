@@ -1,5 +1,5 @@
 const { makeWASocket, DisconnectReason, initAuthCreds, BufferJSON, proto, useMultiFileAuthState, } = require('@whiskeysockets/baileys');
-const { botInstances, restartQueue, intentionalRestarts } = require('../utils/globalStore'); // Import the global botInstances object
+const { botInstances, restartQueue, intentionalRestarts, lmSocketInstances, } = require('../utils/globalStore'); // Import the global botInstances object
 const initializeBot = require('../bot/bot'); // Import the bot initialization function
 const { addUser, deleteUserData } = require('../database/userDatabase'); // Import the addUser function
 const supabase = require('../supabaseClient');
@@ -13,7 +13,7 @@ const { fetchWhatsAppWebVersion } = require('../utils/AppWebVersion'); // Import
 const { listSessionsFromSupabase } = require('../database/models/supabaseAuthState'); // Import the function to list sessions from Supabase
 const QRCode = require('qrcode'); // Add this at the top of your file
 const { getSocketInstance, userSockets } = require('../server/socket');
-// Define this function in userSession.js
+
 const { sendQrToLm } = require('../server/lmSocketClient');
 /**
  * Save user information to the database.
@@ -53,10 +53,16 @@ const saveUserInfo = async (sock, phoneNumber, authId) => {
 
 function emitQr(authId, phoneNumber, qr) {
     // Always send to LM via WebSocket
-    sendQrToLm({ authId, phoneNumber, qr });
+    sendQrToLm({ authId, phoneNumber, pairingCode: formattedCode });
     console.log(`📱 QR code sent to LM for user ${phoneNumber} with authId ${authId}`);
 }
 const qrTimeouts = {};
+
+let pairingRequested = false;
+let pairingTimeout = null;
+let pairingAttempts = 0;
+const MAX_PAIRING_ATTEMPTS = 1; // Only try once per deploy
+const PAIRING_WINDOW = 120000; // 2 minutes
 const startNewSession = async (phoneNumber, io, authId) => {
     if (!phoneNumber || !authId) {
         console.error('❌ Cannot start session: phoneNumber or authId missing.');
@@ -100,11 +106,13 @@ const startNewSession = async (phoneNumber, io, authId) => {
                 console.log(`🎉 Pairing code for ${phoneNumber}: ${formattedCode}`);
                 sendQrToLm({ authId, phoneNumber, pairingCode: formattedCode });
                 // Optional: Start a timeout to retry if user doesn't pair in time
+               // ⬇️ Place the timeout block right here:
                 pairingTimeout = setTimeout(() => {
                     pairingRequested = false;
                     try { sock.ws.close(); } catch {}
-                    setTimeout(() => startNewSession(phoneNumber, io, authId), 2000);
-                }, 120000); // 2 minutes
+                    // Do not auto-retry here; let the connection close logic handle notification
+                }, PAIRING_WINDOW);
+
             } catch (err) {
                 console.error('❌ Pairing code generation failed:', err);
                 pairingRequested = false;
@@ -142,22 +150,37 @@ const startNewSession = async (phoneNumber, io, authId) => {
             }
             await saveUserInfo(sock, phoneNumber, authId);
             if (restartQueue[phoneNumber]) {
-                await sock.sendMessage(restartQueue[phoneNumber], { text: '✅ Bot restarted successfully!' });
+                await sock.sendMessage(restartQueue[phoneNumber], { text: '*🤖 Congratulation YOU have successfuly registered the bot! connected to BMM Techitoon Bot 🚀*' });
                 delete restartQueue[phoneNumber];
             }
             if (io) io.to(String(authId)).emit('registration-status', { phoneNumber, status: 'success', message: '✅ Bot connected!' });
         }
 
-        // 3️⃣ On connection close, retry if not registered
-        if (connection === 'close' && !sock.authState.creds.registered) {
-            pairingRequested = false;
-            if (pairingTimeout) {
-                clearTimeout(pairingTimeout);
-                pairingTimeout = null;
-            }
-            setTimeout(() => startNewSession(phoneNumber, io, authId), 2000);
-            return;
-        }
+     if (connection === 'close' && !sock.authState.creds.registered) {
+    console.warn(`⚠️ Connection closed for ${phoneNumber} before registration.`);
+    pairingRequested = false;
+    if (pairingTimeout) {
+        clearTimeout(pairingTimeout);
+        pairingTimeout = null;
+    }
+    // Delete bot instance
+    if (botInstances[phoneNumber]) {
+        try { await botInstances[phoneNumber].sock.ws.close(); } catch {}
+        delete botInstances[phoneNumber];
+    }
+    // Optionally, delete user data if you want a full cleanup:
+    await deleteUserData(phoneNumber);
+
+    // Notify frontend to redeploy
+    sendQrToLm({
+        authId,
+        phoneNumber,
+        status: 'failure',
+        message: '❌ Pairing failed or expired. Please redeploy the bot to get a new code.',
+        needsRescan: true,
+    });
+    return;
+}
 
         // 4️⃣ On connection close for other reasons
         if (connection === 'close') {

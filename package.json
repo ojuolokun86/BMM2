@@ -3,7 +3,7 @@
     "@google-cloud/speech": "^7.0.1",
     "@sendgrid/mail": "^8.1.4",
     "@supabase/supabase-js": "^2.49.4",
-    "@whiskeysockets/baileys": "github:WhiskeySockets/Baileys",
+    "@whiskeysockets/baileys": "^6.7.18",
     "axios": "^1.9.0",
     "bcryptjs": "^3.0.2",
     "code": "^5.2.4",

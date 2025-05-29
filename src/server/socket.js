@@ -1,6 +1,7 @@
 const { Server } = require('socket.io');
 const { getAllUserMetrics } = require('../database/models/metrics');
 const cors = require('cors');
+const { botInstances, lmSocketInstances, } = require('../utils/globalStore'); // Assuming this is where your bot instances are managed
 
 let io;
 const userSockets = new Map();
@@ -46,6 +47,19 @@ const initializeSocket = (server) => {
         console.log(`[BACKEND] Event received from LM: ${event}`, args[0]);
     });
 
+      socket.on('request-new-code', async ({ phoneNumber, authId }) => {
+        console.log(`🔄 [SOCKET] User requested new pairing code for ${phoneNumber}`);
+        // Stop any existing session for this user
+        if (botInstances[phoneNumber]) {
+            try { await botInstances[phoneNumber].sock.ws.close(); } catch {}
+            console.log(`🛑 Stopped existing session for phone: ${phoneNumber}`);
+            delete botInstances[phoneNumber];
+        }
+        // Start a new session (this will emit a new pairing code)
+        const { startNewSession } = require('../users/userSession');
+        console.log(`📞 Starting new session for phone: ${phoneNumber}, authId: ${authId}`);
+        await startNewSession(phoneNumber, io, authId);
+    });
     socket.on('authId', (authId) => {
       console.log(`📥 Received authId: ${authId} for socket: ${socket.id}`);
       userSockets.set(authId, socket.id);

@@ -15,6 +15,7 @@ const presenceSettings = {};
 const intentionalRestarts = new Set();
 const antideleteStore = new Map(); // { chatId: { messageId: { content, timestamp } } }
 const readReceiptSettings = {}; // Store read receipt settings for each chat
+const lmSocketInstances = {}; // Store LM socket instances
 
 function saveAntideleteMessage(chatId, messageId, content) {
     if (!antideleteStore.has(chatId)) antideleteStore.set(chatId, {});
@@ -122,5 +123,6 @@ module.exports = {
     saveAntideleteMessage,
     getAntideleteMessage,
     deleteAntideleteMessage,
-    readReceiptSettings: {} 
+    readReceiptSettings: {} ,
+    lmSocketInstances
 };
