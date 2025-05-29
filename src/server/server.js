@@ -51,8 +51,8 @@ const createServer = () => {
 });
   // Start a new session
   app.post('/api/start-session', validateToken, async (req, res) => {
-    const { phoneNumber, authId } = req.body;
-    console.log('➡️ [start-session] Received:', { phoneNumber, authId });
+    const { phoneNumber, authId, pairingMethod } = req.body;
+    console.log('➡️ [start-session] Received:', { phoneNumber, authId, pairingMethod });
 
     if (!phoneNumber || !authId) {
         console.error('❌ [start-session] Missing phoneNumber or authId');
@@ -114,7 +114,7 @@ const createServer = () => {
     // Continue with registration...
     try {
         console.log('🚦 [start-session] Calling startNewSession...');
-        await startNewSession(phoneNumber, io, authId);
+        await startNewSession(phoneNumber, io, authId, pairingMethod);
         console.log('✅ [start-session] Session started successfully.');
         return res.status(200).json({ message: 'Session started. Please scan the QR code.' });
     } catch (err) {
@@ -135,14 +135,15 @@ const createServer = () => {
   });
 
   app.get('/api/admin/bots', (req, res) => {
-  // Return all bots currently in memory
   const { botInstances } = require('../utils/globalStore');
   const bots = Object.values(botInstances).map(bot => ({
-    phoneNumber: bot.phoneNumber,
-    authId: bot.authId, // <-- ADD THIS LINE!
-    status: bot.status,
-    server: process.env.SERVER_ID,
-    // ...other info
+    phoneNumber: bot.phoneNumber || 'N/A',
+    authId: bot.authId || 'N/A',
+    status: bot.status || 'Inactive',
+    ram: bot.ram || 0,
+    rom: bot.rom || 0,
+    memoryUsage: bot.memoryUsage || 0,
+    server: process.env.SERVER_ID || 'N/A',
   }));
   res.json({ bots });
 });

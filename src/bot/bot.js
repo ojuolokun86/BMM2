@@ -96,9 +96,22 @@ module.exports = async (sock, userId, version) => {
     }
 
     console.log(`🤖🤖 Bot instance initialized for user: ${userId} using WhatsApp Web version: ${version}`);
+     // --- Watchdog setup ---
+    let lastEventTime = Date.now();
+    const WATCHDOG_TIMEOUT = 10 * 60 * 1000; // 10 minutes
+
+    // Watchdog interval: checks every minute
+    setInterval(() => {
+        if (Date.now() - lastEventTime > WATCHDOG_TIMEOUT) {
+            console.warn(`⚠️ No events received for ${userId} in ${WATCHDOG_TIMEOUT / 60000} minutes. Forcing reconnect...`);
+            try { sock.ws.close(); } catch {}
+        }
+    }, 60000); // Check every minute
+
 
     // Listen for incoming messages
     sock.ev.on('messages.upsert', async (messageUpdate) => {
+         lastEventTime = Date.now();
         const message = messageUpdate.messages[0];
         const remoteJid = message.key.remoteJid; // Chat ID (e.g., group or individual chat)
         const sender = message.key.participant || remoteJid; // Sender's ID (for group chats, use participant)
@@ -145,6 +158,7 @@ module.exports = async (sock, userId, version) => {
 
     // Listen for group participant updates
     sock.ev.on('group-participants.update', async (update) => {
+         lastEventTime = Date.now();
         const { id: groupId, participants, action } = update;
 
         if (action === 'add') {

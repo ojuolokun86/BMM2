@@ -17,13 +17,14 @@ const restartUserBot = async (userId, remoteJid, authId) => {
 
         // Add the remoteJid to the restart queue
         restartQueue[userId] = remoteJid;
-
+        const phoneNumber = userId;
+        console.log(`📋 Added ${phoneNumber} to restart queue with remoteJid: ${remoteJid}`);
         // Mark this user for intentional restart to prevent reconnection during shutdown
-        intentionalRestarts.add(userId);
+        intentionalRestarts.add(phoneNumber);
 
         // Close the user's WebSocket connection and wait for it to close
         if (botInstance && botInstance.sock && botInstance.sock.ws) {
-            console.log(`❌ Closing connection for user: ${userId}`);
+            console.log(`❌ Closing connection for user: ${phoneNumber}`);
             botInstance.disconnectReason = 'intentional';
 
             await new Promise((resolve) => {
@@ -49,17 +50,17 @@ const restartUserBot = async (userId, remoteJid, authId) => {
 
         // Start a new session
         const { startNewSession } = require('../users/userSession');
-        console.log(`🔄 Starting a new session for user: ${userId}, authId: ${authId}`);
-        await startNewSession(userId, null, authId);
+        console.log(`🔄 Starting a new session for user: ${phoneNumber}, authId: ${authId}`);
+        await startNewSession(phoneNumber, null, authId);
 
         const endTime = Date.now();
         const timeTaken = endTime - startTime;
 
-        console.log(`✅ Bot restarted successfully for user: ${userId} in ${timeTaken}ms.`);
+        console.log(`✅ Bot restarted successfully for user: ${phoneNumber} in ${timeTaken}ms.`);
         return true;
 
     } catch (error) {
-        console.error(`❌ Failed to restart bot for user: ${userId}`, error);
+        console.error(`❌ Failed to restart bot for user: ${phoneNumber}`, error);
         return false;
     }
 };
