@@ -81,7 +81,7 @@ const startNewSession = async (phoneNumber, io, authId) => {
         version: await fetchWhatsAppWebVersion(),
         auth: state,
         logger: pino({ level: 'silent' }),
-        browser: ['Chrome', 'Safari', '10.0'],
+        browser: ['Safari', 'Safari', '15.1.0'],
         generateHighQualityLinkPreview: true,
         markOnlineOnConnect: true,
         getMessage: async () => {}
