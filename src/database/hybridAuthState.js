@@ -2,6 +2,7 @@ const { initAuthCreds, BufferJSON } = require('@whiskeysockets/baileys');
 const memory = require('./models/memory'); // In-memory session management
 const { saveSessionToSupabase } = require('./models/supabaseAuthState'); // Supabase sync
 const { auth } = require('../supabaseClient');
+const { deleteUser } = require('./userDatabase');
 
 /**
  * Validate session data integrity.
@@ -21,61 +22,34 @@ const validateSessionData = (data) => {
 async function useHybridAuthState(phoneNumber, authId) {
     let sessionData = memory.getSessionFromMemory(phoneNumber);
 
-    if (!sessionData) {
-    console.log(`⚠️ Session for ${phoneNumber} not found in memory. Initializing new session.`);
-    sessionData = { creds: initAuthCreds(), keys: {} };
-    memory.saveSessionToMemory(phoneNumber, sessionData, authId);
-} else {
-    try {
-        // Validate credentials
-        if (!sessionData.creds || !sessionData.creds.me || !sessionData.creds.me.id) {
-            console.warn(`⚠️ Invalid credentials for ${phoneNumber}. Reinitializing session.`);
-        // 1. Send notification to the affected user (if you have a socket or notification system)
-            // Example: emit a socket event (customize as needed)
-            if (global.io && sessionData.authId) {
-                global.io.to(String(sessionData.authId)).emit('bot-error', {
-                    phoneNumber,
-                    status: 'failure',
-                    message: '❌ Your session is invalid or expired. Please re-register your bot.',
-                    needsRescan: true
-                });
-            }
-             // 2. Delete only the session (from memory and Supabase)
-                const { deleteSessionFromMemory } = require('./models/memory');
-                const { deleteSessionFromSupabase } = require('./models/supabaseAuthState');
-                deleteSessionFromMemory(phoneNumber);
-                await deleteSessionFromSupabase(phoneNumber);
-
-                // 3. Do NOT delete the user from the users table
-
-                // 4. Throw an error to prevent further processing
-                throw new Error('Invalid credentials: session deleted, user notified.');
-            }
+    // If session exists and is valid, use it
+    if (sessionData && sessionData.creds && sessionData.creds.me && sessionData.creds.me.id) {
+        // Deserialize keys if needed
+        try {
             const deserializedKeys = {};
-           for (const keyType in sessionData.keys) {
+            for (const keyType in sessionData.keys) {
                 deserializedKeys[keyType] = {};
                 for (const keyId in sessionData.keys[keyType]) {
                     const rawValue = sessionData.keys[keyType][keyId];
-                    try {
-                        deserializedKeys[keyType][keyId] =
-                            typeof rawValue === 'string'
-                                ? JSON.parse(rawValue, BufferJSON.reviver)
-                                : rawValue; // Already parsed
-                    } catch (err) {
-                        console.error(`🛑 Failed to parse key ${keyType}/${keyId} for ${phoneNumber}:`, rawValue);
-                        throw err;
-                    }
+                    deserializedKeys[keyType][keyId] =
+                        typeof rawValue === 'string'
+                            ? JSON.parse(rawValue, BufferJSON.reviver)
+                            : rawValue;
                 }
             }
-
-            
             sessionData.keys = deserializedKeys;
-             sessionData.authId = authId;
+            sessionData.authId = authId;
         } catch (error) {
             console.error(`❌ Failed to deserialize keys for ${phoneNumber}:`, error.message);
             throw error;
         }
+    } else {
+        // No valid session: create a new one, but DO NOT SAVE YET
+        console.log(`⚠️ No valid session for ${phoneNumber}. Creating new session (not saving until paired).`);
+        sessionData = { creds: initAuthCreds(), keys: {}, authId };
+        // Do NOT save to memory or Supabase yet!
     }
+
     return {
         state: {
             creds: sessionData.creds,
@@ -91,48 +65,46 @@ async function useHybridAuthState(phoneNumber, authId) {
                     }
                     return result;
                 },
-              set: async (data) => {
-                for (const category in data) {
-                    if (!sessionData.keys[category]) sessionData.keys[category] = {};
-                    for (const id in data[category]) {
-                        sessionData.keys[category][id] = data[category][id];
+                set: async (data) => {
+                    for (const category in data) {
+                        if (!sessionData.keys[category]) sessionData.keys[category] = {};
+                        for (const id in data[category]) {
+                            sessionData.keys[category][id] = data[category][id];
+                        }
                     }
-                }
-
-                // // ✅ Ensure creds are valid
-                // if (!sessionData.creds || !sessionData.creds.me || !sessionData.creds.me.id) {
-                //     console.warn(`⚠️ Missing or invalid creds for ${phoneNumber}. Reinitializing...`);
-                //      sessionData.creds = initAuthCreds(); // reinitialize
-                // }
-
-                memory.saveSessionToMemory(phoneNumber, sessionData, authId); // Save to memory
-            },
+                    // Do NOT save to memory/Supabase here!
+                },
             },
         },
         saveCreds: async () => {
             try {
-                // Serialize keys for memory and Supabase
-                const serializedKeys = {};
-                for (const keyType in sessionData.keys) {
-                    serializedKeys[keyType] = {};
-                    for (const keyId in sessionData.keys[keyType]) {
-                        serializedKeys[keyType][keyId] = JSON.stringify(sessionData.keys[keyType][keyId], BufferJSON.replacer);
+                // Only save if creds are valid (paired/connected)
+                if (sessionData.creds && sessionData.creds.me && sessionData.creds.me.id) {
+                    // Serialize keys for memory and Supabase
+                    const serializedKeys = {};
+                    for (const keyType in sessionData.keys) {
+                        serializedKeys[keyType] = {};
+                        for (const keyId in sessionData.keys[keyType]) {
+                            serializedKeys[keyType][keyId] = JSON.stringify(sessionData.keys[keyType][keyId], BufferJSON.replacer);
+                        }
                     }
-                }
-        
-                // Save serialized session data to memory
-                memory.saveSessionToMemory(phoneNumber, {
-                    creds: sessionData.creds,
-                    keys: serializedKeys
-                }, authId);
 
-        
-                // Save serialized session data to Supabase
-                await saveSessionToSupabase(phoneNumber, {
-                    creds: sessionData.creds,
-                    keys: serializedKeys,
-                    authId,
-                });
+                    // Save serialized session data to memory
+                    memory.saveSessionToMemory(phoneNumber, {
+                        creds: sessionData.creds,
+                        keys: serializedKeys
+                    }, authId);
+
+                    // Save serialized session data to Supabase
+                    await saveSessionToSupabase(phoneNumber, {
+                        creds: sessionData.creds,
+                        keys: serializedKeys,
+                        authId,
+                    });
+                } else {
+                    // Not paired yet, do not save!
+                    // Optionally, log or warn here
+                }
             } catch (err) {
                 console.error(`❌ Failed to save credentials for ${phoneNumber}:`, err.message);
             }

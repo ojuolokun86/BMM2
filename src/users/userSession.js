@@ -14,8 +14,7 @@ const { listSessionsFromSupabase } = require('../database/models/supabaseAuthSta
 const QRCode = require('qrcode'); // Add this at the top of your file
 const { getSocketInstance, userSockets } = require('../server/socket');
 // Define this function in userSession.js
-const { sendQrToLm } = require('../server/lmSocketClient'); //wwded
-
+const { sendQrToLm } = require('../server/lmSocketClient');
 /**
  * Save user information to the database.
  * @param {object} sock - The WhatsApp socket instance.
@@ -59,236 +58,120 @@ function emitQr(authId, phoneNumber, qr) {
 }
 const qrTimeouts = {};
 const startNewSession = async (phoneNumber, io, authId) => {
- if (!phoneNumber || !authId) {
-        console.error('❌ Cannot start session: phoneNumber or authId is undefined.');
-        return;
+    if (!phoneNumber || !authId) {
+        console.error('❌ Cannot start session: phoneNumber or authId missing.');
+        return { status: 'error', message: 'Phone number or Auth ID missing' };
     }
 
-            if (botInstances[phoneNumber]) {
-                console
-            try {
-                if (botInstances[phoneNumber].sock && botInstances[phoneNumber].sock.ws) {
-                    await botInstances[phoneNumber].sock.ws.close();
-                }
-            } catch (e) {}
-            delete botInstances[phoneNumber];
-        }
+    if (botInstances[phoneNumber]) {
+        try { if (botInstances[phoneNumber].sock?.ws) await botInstances[phoneNumber].sock.ws.close(); } catch {}
+        delete botInstances[phoneNumber];
+    }
 
-    try {
-       console.log(`🔄 Starting a new session for auth_id: ${authId}, phone number: ${phoneNumber}`);
-      // Use Baileys' multiAuthState to manage session storage
-      const { state, saveCreds } = await useHybridAuthState(phoneNumber, authId);
-      // For testing, use local file auth state
-      //const { state, saveCreds } = await useMultiFileAuthState(phoneNumber);
+    console.log(`🔄 Starting session for ${phoneNumber} with authId ${authId}`);
+    const { state, saveCreds } = await useHybridAuthState(phoneNumber, authId);
 
-      const sock = makeWASocket({
-    version: await fetchWhatsAppWebVersion(),
-    auth: state,
-    browser: ['Techitoon-Bot', 'Opera', '10.0.0'],
-    logger: pino({ level: 'silent' }),
-    generateHighQualityLinkPreview: true,
-    markOnlineOnConnect: true,
-    // Automatically re-init sessions when needed
-    getMessage: async (key) => {}
-});
+    const sock = makeWASocket({
+        version: await fetchWhatsAppWebVersion(),
+        auth: state,
+        logger: pino({ level: 'silent' }),
+        browser: ['Chrome', 'Safari', '10.0'],
+        generateHighQualityLinkPreview: true,
+        markOnlineOnConnect: true,
+        getMessage: async () => {}
+    });
 
+    sock.ev.on('creds.update', saveCreds);
 
-      
+    let pairingRequested = false;
+    let pairingTimeout = null;
 
-      sock.ev.on('connection.update', async (update) => {
-        console.log('📶 Connection update:', update);
+    // Connection Updates
+    sock.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect, qr } = update;
-       if (qr) {
-    emitQr(authId, phoneNumber, qr);
-    console.log(`📱 QR code emitted for user ${phoneNumber} with authId ${authId}`);
-}
+        console.log(`📶 Connection update for ${phoneNumber}:`, connection, update);
 
-         if (qrTimeouts[phoneNumber]) {
-                    clearTimeout(qrTimeouts[phoneNumber]);
-                }
-                // Set a new timeout: 5 minutes (300000 ms)
-                qrTimeouts[phoneNumber] = setTimeout(async () => {
-                    console.log(`⏰ QR code for ${phoneNumber} not scanned in 5 minutes. Closing session.`);
-                    try {
-                        await sock.ws.close();
-                    } catch (err) {
-                        console.error(`❌ Error closing socket for ${phoneNumber}:`, err.message);
-                    }
-                    delete botInstances[phoneNumber];
-                    await deleteUserData(phoneNumber);
-                    if (io && authId) {
-                        io.to(String(authId)).emit('bot-error', {
-                            phoneNumber,
-                            status: 'failure',
-                            message: '❌ QR code expired. Please try registering your bot again.',
-                            needsRescan: true
-                        });
-                    }
-                }, 5 * 60 * 1000); // 5 minutes
-        
-    
-        const userId = phoneNumber;
-        console.log(`🥶 user id ${userId}`)
-
-            if (connection === 'open') {
-                 if (qrTimeouts[phoneNumber]) {
-                    clearTimeout(qrTimeouts[phoneNumber]);
-                    delete qrTimeouts[phoneNumber];
-                }
-            
-                console.log(`✅ Connected to WhatsApp for user ${userId}.`);
-                botInstances[userId] = { sock, authId}; // Save the bot instance
-                initializeBot(sock, userId); // Initialize the bot
-            
-
-                console.log(`✅ Session saved for user ${userId}`);
-
-                // Notify the frontend of success
-                if (io) {
-                    io.emit('registration-status', {
-                        phoneNumber,
-                        status: 'success',
-                        message: '✅ Bot successfully registered and connected!',
-                    });
-                    io.emit('qr-clear', { phoneNumber }); // Clear the QR code from the frontend
-                }
-
-                // Check if the user exists in the database
-                const { data: existingUser, error } = await supabase
-                    .from('users')
-                    .select('user_id')
-                    .eq('user_id', userId)
-                    .single();
-
-                if (error && error.code !== 'PGRST116') {
-                    console.error(`❌ Error checking user ${userId} in the database:`, error);
-                }
-
-                if (!existingUser) {
-                    console.log(`🎉 User ${userId} not found in the database. Treating as a first-time login.`);
-
-                    // Schedule a restart after 1 minute
-                    setTimeout(async () => {
-                        console.log(`🔄 Restarting bot for first-time user: ${userId}`);
-                        const { restartUserBot } = require('../bot/restartBot');
-                        await restartUserBot(userId, userId + '@s.whatsapp.net', authId);
-                    }, 20000); // 1 minute
-                }
-
-                // Check if the user is in the restart queue
-                if (restartQueue[userId]) {
-                    const remoteJid = restartQueue[userId];
-                    console.log(`✅ Sending restart success message to ${remoteJid}`);
-                    await sock.sendMessage(remoteJid, { text: '✅ Bot restarted successfully! and ready to use enjoy!!!!😎' });
-                    delete restartQueue[userId]; // Remove the user from the queue
-                }
-
-                // Save user info to the database
-                await saveUserInfo(sock, phoneNumber, authId);
-            } else if (connection === 'close') {
-                const reason = new Boom(lastDisconnect?.error)?.output?.statusCode;
-                const sessionId = phoneNumber;
-
-                console.warn(`⚠️ Connection closed for ${sessionId}. Reason code: ${reason}`);
-
-                // Notify the frontend of failure
-                if (io && authId) {
-                    let message = `❌ Connection failed for ${phoneNumber}. Reason: ${reason}`;
-                    let needsRescan = false;
-
-                    if (reason === DisconnectReason.restartRequired) {
-                        message = '♻️ Restart required. Reconnecting...';
-                    } else if (
-                        reason === DisconnectReason.connectionLost ||
-                        reason === DisconnectReason.timedOut
-                    ) {
-                        message = '🔄 Reconnecting...';
-                    } else if (reason === DisconnectReason.loggedOut || reason === DisconnectReason.badSession) {
-                        message = '❌ Session invalid. Please rescan the QR code.';
-                        needsRescan = true;
-                    }
-
-                    io.to(String(authId)).emit('bot-error', {
-                        phoneNumber,
-                        status: 'failure',
-                        message,
-                        needsRescan,
-                    });
-                }
-
-                switch (reason) {
-                    case DisconnectReason.badSession:
-                        console.log(`❌ Bad session for ${sessionId}. Please delete the session and scan again.`);
-                        await deleteUserData(sessionId);
-                        break;
-
-                    case DisconnectReason.connectionClosed:
-                    case DisconnectReason.connectionLost:
-                    case DisconnectReason.timedOut:
-                        if (intentionalRestarts.has(sessionId)) {
-                            console.log(`⚠️ Skipping auto-reconnect for user ${sessionId} due to intentional disconnection.`);
-                            intentionalRestarts.delete(sessionId); // Clear the flag after skipping
-                            break; // Do NOT reconnect
-                        }
-                        console.log(`🔁 Attempting to reconnect session ${sessionId} in 2 seconds...`);
-                        setTimeout(() => startNewSession(sessionId, io, authId), 2000);
-                        break;
-
-                    case DisconnectReason.loggedOut:
-                        console.log(`👋 User ${sessionId} logged out. Cleaning up session and data.`);
-                        delete botInstances[sessionId];
-                        await deleteUserData(sessionId);
-                        break;
-
-                    case DisconnectReason.restartRequired:
-                        console.log(`♻️ Restart required for session ${sessionId}. Restarting...`);
-                        setTimeout(() => startNewSession(sessionId, io, authId), 2000);
-                        break;
-
-                    case DisconnectReason.multideviceMismatch:
-                        console.log(`❗ Multi-device mismatch for ${sessionId}. Please logout and re-login.`);
-                        await deleteUserData(sessionId);
-                        break;
-
-                   default:
-
-                   if (intentionalRestarts.has(sessionId)) {
-                        console.log(`⚠️ Skipping auto-reconnect for user ${sessionId} due to intentional disconnection.`);
-                        intentionalRestarts.delete(sessionId); // Clear the flag after skipping
-                        break; // Do NOT reconnect
-                    }
-                        console.log(`❓ Unknown disconnect reason (${reason}) for ${sessionId}. Retrying in 2 seconds...`);
-                        // Notify the frontend to tell the user to register again
-                        if (io && authId) {
-                            io.to(String(authId)).emit('bot-error', {
-                                phoneNumber: sessionId,
-                                status: 'failure',
-                                message: '❌ Unknown error occurred. Please register your bot again.',
-                                needsRescan: true
-                            });
-                        }
-                       console.log(`🔁 deleting session ${sessionId} `);
-                       await deleteUserData(sessionId);
-                        break;
-                }
+        // 1️⃣ Request pairing code when qr is present and not already requested
+        if (!sock.authState.creds.registered && qr && !pairingRequested) {
+            pairingRequested = true;
+            try {
+                const pairingCode = await sock.requestPairingCode(phoneNumber);
+                const formattedCode = pairingCode.match(/.{1,4}/g).join('-');
+                console.log(`🎉 Pairing code for ${phoneNumber}: ${formattedCode}`);
+                sendQrToLm({ authId, phoneNumber, pairingCode: formattedCode });
+                // Optional: Start a timeout to retry if user doesn't pair in time
+                pairingTimeout = setTimeout(() => {
+                    pairingRequested = false;
+                    try { sock.ws.close(); } catch {}
+                    setTimeout(() => startNewSession(phoneNumber, io, authId), 2000);
+                }, 120000); // 2 minutes
+            } catch (err) {
+                console.error('❌ Pairing code generation failed:', err);
+                pairingRequested = false;
+                sendQrToLm({
+                    authId,
+                    phoneNumber,
+                    status: 'failure',
+                    message: '❌ Failed to generate pairing code. Please try again.',
+                    needsRescan: true,
+                });
             }
-        });
-
-        // Save updated credentials on change
-        sock.ev.on('creds.update', saveCreds);
-    } catch (error) {
-        console.error(`❌ Failed to start a new session for user ${phoneNumber}:`, error);
-
-       // ...inside your catch or error handling block...
-        if (io && authId) {
-            io.to(String(authId)).emit('bot-error', {
-                phoneNumber,
-                status: 'failure',
-                message: `❌ Failed to start a new session for ${phoneNumber}. Error: ${error.message}`,
-            });
         }
-    }
+
+        // 2️⃣ On successful connection
+        if (connection === 'open') {
+            if (pairingTimeout) {
+                clearTimeout(pairingTimeout);
+                pairingTimeout = null;
+            }
+            pairingRequested = false;
+            console.log(`✅ Connected for ${phoneNumber}`);
+            botInstances[phoneNumber] = { sock, authId };
+            initializeBot(sock, phoneNumber);
+            console.log(`✅ Session saved for user ${phoneNumber} with authId ${authId}`);
+            // 🔍 Supabase User Check + Restart Logic
+            const { data: existingUser, error } = await supabase
+                .from('users').select('user_id').eq('user_id', phoneNumber).single();
+            if (error && error.code !== 'PGRST116') console.error('❌ Supabase error:', error);
+            if (!existingUser) {
+                console.log(`🎉 First-time user detected. Scheduling restart...`);
+                setTimeout(async () => {
+                    const { restartUserBot } = require('../bot/restartBot');
+                    await restartUserBot(phoneNumber, `${phoneNumber}@s.whatsapp.net`, authId);
+                }, 20000);
+            }
+            await saveUserInfo(sock, phoneNumber, authId);
+            if (restartQueue[phoneNumber]) {
+                await sock.sendMessage(restartQueue[phoneNumber], { text: '✅ Bot restarted successfully!' });
+                delete restartQueue[phoneNumber];
+            }
+            if (io) io.to(String(authId)).emit('registration-status', { phoneNumber, status: 'success', message: '✅ Bot connected!' });
+        }
+
+        // 3️⃣ On connection close, retry if not registered
+        if (connection === 'close' && !sock.authState.creds.registered) {
+            pairingRequested = false;
+            if (pairingTimeout) {
+                clearTimeout(pairingTimeout);
+                pairingTimeout = null;
+            }
+            setTimeout(() => startNewSession(phoneNumber, io, authId), 2000);
+            return;
+        }
+
+        // 4️⃣ On connection close for other reasons
+        if (connection === 'close') {
+            const reason = new Boom(lastDisconnect?.error)?.output?.statusCode;
+            console.warn(`⚠️ Connection closed for ${phoneNumber}: ${reason}`);
+            if ([DisconnectReason.restartRequired, DisconnectReason.connectionLost, DisconnectReason.timedOut].includes(reason)) {
+                setTimeout(() => startNewSession(phoneNumber, io, authId), 2000);
+            } else if ([DisconnectReason.loggedOut, DisconnectReason.badSession].includes(reason)) {
+                await deleteUserData(phoneNumber);
+            }
+        }
+    });
 };
+
 
 /**
  * Load all existing sessions using hybridAuthState.
