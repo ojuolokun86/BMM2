@@ -20,7 +20,8 @@ const addToQueue = (userId, task) => {
     }
 
     if (!userQueues.has(userId)) {
-        userQueues.set(userId, []); // Initialize the queue as an empty array
+        userQueues.set(userId, []); // Initialize the queue as an empty array and store it in the map
+        console.log(`🗂️ Initialized queue for user ${userId}`);
     }
 
     const queue = userQueues.get(userId); // Retrieve the user's queue
