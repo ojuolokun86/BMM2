@@ -1,6 +1,5 @@
 const memoryStore = new Map(); // In-memory storage for sessions
 const  supabase  = require('../../supabaseClient'); // Supabase client for database operations
-const { saveSessionToSupabase } = require('../models/supabaseAuthState')
 
 
 /**
@@ -176,6 +175,7 @@ const enforceMemoryLimit = async (phoneNumber) => {
     // RAM check (per session)
     if (sizeInMB > maxRam) {
         console.warn(`⚠️ RAM usage for user ${phoneNumber} exceeds the limit (${sizeInMB.toFixed(2)} MB > ${maxRam} MB). Offloading session to Supabase...`);
+        const { saveSessionToSupabase, } = require('../models/supabaseAuthState');
         await saveSessionToSupabase(phoneNumber, session);
         deleteSessionFromMemory(phoneNumber);
     }
