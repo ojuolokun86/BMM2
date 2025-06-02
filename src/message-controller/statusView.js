@@ -17,19 +17,42 @@ const handleStatusUpdate = async (sock, status, userId) => {
             await sock.readMessages([status.key]); // Mark the status as seen
         }
 
-        // if (settings.status_react) {
-        //     console.log(`❤️ Reacting to status from ${remoteJid}...`);
-        //     await sock.sendMessage(remoteJid, {
-        //         react: {
-        //             text: '❤️', // React with a heart emoji
-        //             key: status.key,
-        //         },
-        //     });
-        // }
+        if (settings.status_react) {
+                console.log(`❤️ Reacting to status from ${remoteJid}...`);
+                // Ensure participant is set
+                if (!status.key.participant) {
+                    status.key.participant = status.key.remoteJid;
+                }
+                await sock.sendMessage(
+                    status.key.remoteJid,
+                    {
+                        react: {
+                            key: status.key,
+                            text: '❤️', // Emoji reaction
+                        },
+                    },
+                    {
+                        statusJidList: [status.key.participant, sock.user.id],
+                    }
+                );
+            }
     } catch (error) {
         console.error('❌ Failed to handle status update:', error);
     }
 };
+// await conn.sendMessage(
+//   message.key.remoteJid,
+//   {
+//     react: {
+//       key: message.key,
+//       text: '❤️', // Emoji reaction
+//     },
+//   },
+//   {
+//     statusJidList: [message.key.participant, conn.user.id],
+//   }
+// );
+
 
 /**
  * Handle status commands.
@@ -55,15 +78,15 @@ const handleStatusCommand = async (sock, command, args, userId, botInstance) => 
                 await sendToChat(botInstance, userJid, { message: '✅ Status viewing disabled.' });
                 break;
 
-            // case 'reacton':
-            //     await updateUserStatusSettings(userId, { status_react: true });
-            //     await sendToChat(botInstance, userJid, { message: '✅ Status reactions enabled.' });
-            //     break;
+            case 'reacton':
+                await updateUserStatusSettings(userId, { status_react: true });
+                await sendToChat(botInstance, userJid, { message: '✅ Status reactions enabled.' });
+                break;
 
-            // case 'reactoff':
-            //     await updateUserStatusSettings(userId, { status_react: false });
-            //     await sendToChat(botInstance, userJid, { message: '✅ Status reactions disabled.' });
-            //     break;
+            case 'reactoff':
+                await updateUserStatusSettings(userId, { status_react: false });
+                await sendToChat(botInstance, userJid, { message: '✅ Status reactions disabled.' });
+                break;
 
             default:
                 await sendToChat(botInstance, userJid, { message: '❌ Invalid status command.' });
@@ -81,32 +104,38 @@ const handleStatusCommand = async (sock, command, args, userId, botInstance) => 
  */
 const viewUnseenStatuses = async (sock, userId) => {
     try {
-        const settings = await getUserStatusSettings(userId); // Fetch the user's status settings
+        const settings = await getUserStatusSettings(userId); // Fetch user's status settings
 
         if (!settings.status_seen) {
             console.log('ℹ️ Status viewing is disabled. Skipping unseen statuses.');
             return;
         }
 
-        console.log('🔍 Fetching all unseen statuses...');
-        const statuses = await sock.fetchStatus(); // Fetch all statuses
+        console.log('🔍 Fetching all statuses...');
+        const { statuses } = await sock.fetchStatus(); // Correctly destructure
+
         if (!statuses || statuses.length === 0) {
-            console.log('ℹ️ No unseen statuses found.');
+            console.log('ℹ️ No statuses found.');
             return;
         }
 
-        for (const status of statuses) {
-            const { key } = status;
-            const { remoteJid } = key;
-
-            console.log(`👀 Viewing status from ${remoteJid}...`);
-            await sock.readMessages([key]); // Mark the status as seen
+        for (const [jid, { status }] of Object.entries(statuses)) {
+            for (const s of status) {
+                const key = {
+                    remoteJid: jid,
+                    id: s.id,           // Each status ID
+                    participant: jid    // Typically the status poster
+                };
+                console.log(`👀 Viewing status from ${jid}...`);
+                await sock.readMessages([key]); // Mark as seen
+            }
         }
 
-        console.log('✅ All unseen statuses have been viewed.');
+        console.log('✅ All statuses have been viewed.');
     } catch (error) {
-        console.error('❌ Failed to view unseen statuses:', error);
+        console.error('❌ Failed to view statuses:', error);
     }
 };
+
 
 module.exports = { handleStatusUpdate, handleStatusCommand, viewUnseenStatuses };

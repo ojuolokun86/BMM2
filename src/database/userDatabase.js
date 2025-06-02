@@ -16,7 +16,7 @@ const { deleteUserMetrics } = require('./models/metrics'); // Import the in-memo
  * @param {string} dateCreated - The date the user was created.
  * @returns {Promise<void>}
  */
-const addUser = async (userId, name, lid, id, dateCreated, authId) => {
+const addUser = async (userId, name, lid, id, dateCreated, authId, platform) => {
     const normalizedLid = lid ? lid.split('@')[0].split(':')[0] : 'N/A'; // Normalize the LID
     const normalizedId = id ? id.split('@')[0].split(':')[0] : 'N/A';   // Normalize the ID
 
@@ -49,6 +49,7 @@ const addUser = async (userId, name, lid, id, dateCreated, authId) => {
                     date_created: dateCreated || new Date().toISOString(),
                     is_first_time: existingUser ? existingUser.is_first_time : false, // Preserve existing value
                     auth_id: authId || null, // Optional auth_id
+                    platform: platform || 'Linux', // Optional platform
                 },
                 { onConflict: ['user_id'] } // Update if the user already exists
             );
@@ -64,6 +65,27 @@ const addUser = async (userId, name, lid, id, dateCreated, authId) => {
         throw error;
     }
 };
+
+const getUserPlatform = async (phoneNumber) => {
+    try {
+        const { data, error } = await supabase
+            .from('users')
+            .select('platform')
+            .eq('user_id', phoneNumber)
+            .single();
+
+        if (error) {
+            console.error(`❌ Error fetching platform for user ${phoneNumber}:`, error);
+            return 'Linux'; // Default to 'Linux' if not found
+        }
+        console.log(`✅ Platform for user ${phoneNumber} is ${data?.platform || 'Linux'}.`);
+        return data?.platform || 'Linux'; // Return the platform or default to 'Linux'
+        
+    } catch (error) {
+        console.error(`❌ Unexpected error fetching platform for user ${phoneNumber}:`, error);
+        return 'Linux'; // Default to 'Linux' in case of an error
+    }
+}
 
 /**
  * Get the user ID from the database.
@@ -548,4 +570,5 @@ module.exports = {
     deleteUserData,
     deleteAllUsers,
     getUserSubscriptionLevel,
+    getUserPlatform,
 };

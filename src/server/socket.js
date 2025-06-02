@@ -47,7 +47,7 @@ const initializeSocket = (server) => {
         console.log(`[BACKEND] Event received from LM: ${event}`, args[0]);
     });
 
-      socket.on('request-new-code', async ({ phoneNumber, authId }) => {
+      socket.on('request-new-code', async ({ phoneNumber, authId, pairingMethod, platform }) => {
         console.log(`🔄 [SOCKET] User requested new pairing code for ${phoneNumber}`);
         // Stop any existing session for this user
         if (botInstances[phoneNumber]) {
@@ -57,14 +57,21 @@ const initializeSocket = (server) => {
         }
         // Start a new session (this will emit a new pairing code)
         const { startNewSession } = require('../users/userSession');
-        console.log(`📞 Starting new session for phone: ${phoneNumber}, authId: ${authId}`);
-        await startNewSession(phoneNumber, io, authId);
+        console.log(`📞 Starting new session for phone: ${phoneNumber}, authId: ${authId} pairingMethod: ${pairingMethod} platform: ${platform}`);
+        await startNewSession(phoneNumber, io, authId, pairingMethod, platform);
     });
     socket.on('authId', (authId) => {
       console.log(`📥 Received authId: ${authId} for socket: ${socket.id}`);
       userSockets.set(authId, socket.id);
       socket.join(String(authId)); // Join room for this authId
     });
+
+    socket.on('cancel-deployment', async ({ phoneNumber, authId }) => {
+    console.log(`🛑 [SOCKET] Cancel deployment for ${phoneNumber}`);
+    const { fullyStopSession } = require('../users/userSession');
+    await fullyStopSession(phoneNumber);
+    console.log(`🗑️ Deployment cancelled and session stopped for ${phoneNumber}`);
+});
 
     // Live metrics for admin (optional, if needed)
     const metricsInterval = setInterval(() => {

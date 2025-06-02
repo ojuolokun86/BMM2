@@ -14,13 +14,55 @@ const { listSessionsFromSupabase } = require('../database/models/supabaseAuthSta
 const QRCode = require('qrcode'); // Add this at the top of your file
 const { getSocketInstance, userSockets } = require('../server/socket');
 
+const sessionTimers = {};
+const cancelledSessions = new Set();
+
+async function fullyStopSession(phoneNumber) {
+    console.log(`🛑 Fully stopping session for ${phoneNumber}`);
+    // Clear all timeouts/intervals
+    if (sessionTimers[phoneNumber]) {
+        sessionTimers[phoneNumber].forEach(clearInterval);
+        delete sessionTimers[phoneNumber];
+        cancelledSessions.add(phoneNumber);
+        console.log(`⏹️ All timers cleared for ${phoneNumber}`);
+    } else {
+        console.log(`ℹ️ No timers found for ${phoneNumber}`);
+    }
+    // Remove event listeners and close socket
+    if (botInstances[phoneNumber]) {
+        console.log(`🔌 Closing socket for ${phoneNumber}`);
+        try {
+            const sock = botInstances[phoneNumber].sock;
+            if (sock?.ws) {
+                sock.ev.removeAllListeners();
+                if (typeof sock.ws.terminate === 'function') {
+                    sock.ws.terminate();
+                    console.log(`✅ Socket for ${phoneNumber} terminated immediately.`);
+                } else {
+                    await sock.ws.close();
+                    console.log(`✅ Socket for ${phoneNumber} closed gracefully.`);
+                }
+            }
+        } catch (err) {
+            console.warn(`⚠️ Error closing socket for ${phoneNumber}:`, err.message);
+        }
+        delete botInstances[phoneNumber];
+        console.log(`🗑️ Bot instance for ${phoneNumber} deleted.`);
+    } else {
+        console.log(`ℹ️ No bot instance found for ${phoneNumber}`);
+    }
+}
+
+
+
 const { sendQrToLm } = require('../server/lmSocketClient');
+const { platform } = require('os');
 /**
  * Save user information to the database.
  * @param {object} sock - The WhatsApp socket instance.
  * @param {string} phoneNumber - The user's phone number.
  */
-const saveUserInfo = async (sock, phoneNumber, authId) => {
+const saveUserInfo = async (sock, phoneNumber, authId, platform) => {
     try {
         if (!sock.user) {
             console.error(`❌ No user information available for phone number: ${phoneNumber}`);
@@ -36,11 +78,12 @@ const saveUserInfo = async (sock, phoneNumber, authId) => {
             - LID: ${lid || 'N/A'}
             - Phone Number: ${phoneNumber}
             - Auth ID: ${authId}
+            - Platform: ${platform}
         `);
 
         const userId = phoneNumber; // Define userId explicitly
         // Call the addUser function to save the user info to the database
-        await addUser(userId, name, lid, id, dateCreated, authId);
+        await addUser(userId, name, lid, id, dateCreated, authId, platform);
 
         console.log(`✅ User info for phone number ${userId} saved successfully.`);
     } catch (error) {
@@ -48,7 +91,30 @@ const saveUserInfo = async (sock, phoneNumber, authId) => {
     }
 };
 
-
+const Browsers = {
+    macOS: () => ['WhatsApp', 'MacOS', '10.15.7'],
+    Windows: () => ['WhatsApp', 'Windows', '10'],
+    Linux: () => ['WhatsApp', 'Linux', 'Ubuntu'],
+    Android: () => ['WhatsApp', 'Android', '11'],
+    iOS: () => ['WhatsApp', 'iOS', '15.3'],
+    Chrome: () => ['WhatsApp', 'Chrome', '114.0.5735.199'],
+    Firefox: () => ['WhatsApp', 'Firefox', '113.0'],
+    Edge: () => ['WhatsApp', 'Edge', '114.0.1823.67'],
+    Opera: () => ['WhatsApp', 'Opera', '99.0.4788.77'],
+    Brave: () => ['WhatsApp', 'Brave', '1.52.129'],
+    Samsung: () => ['WhatsApp', 'Samsung', '20.0'],
+    Ubuntu: () => ['WhatsApp', 'Ubuntu', '22.04'],
+    Fedora: () => ['WhatsApp', 'Fedora', '38'],
+    Debian: () => ['WhatsApp', 'Debian', '12'],
+    CentOS: () => ['WhatsApp', 'CentOS', '8'],
+    Safari: () => ['WhatsApp', 'Safari', '16.5'],           // Added Safari
+    Vivaldi: () => ['WhatsApp', 'Vivaldi', '6.1'],          // Added Vivaldi
+    Yandex: () => ['WhatsApp', 'Yandex', '23.5.0.2263'],    // Added Yandex
+    QQ: () => ['WhatsApp', 'QQ', '11.7'],                   // Added QQ Browser
+    UC: () => ['WhatsApp', 'UC', '13.4.0.1306'],            // Added UC Browser
+    Maxthon: () => ['WhatsApp', 'Maxthon', '7.0.2.2600'],   // Added Maxthon
+    // Add more as needed
+};
 
 
 function emitQr(authId, phoneNumber, qr) {
@@ -63,7 +129,7 @@ let pairingTimeout = null;
 let pairingAttempts = 0;
 const MAX_PAIRING_ATTEMPTS = 1; // Only try once per deploy
 const PAIRING_WINDOW = 120000; // 2 minutes
-const startNewSession = async (phoneNumber, io, authId, pairingMethod) => {
+const startNewSession = async (phoneNumber, io, authId, pairingMethod, platform) => {
     console.log(`🔄 Starting new session for phone: ${phoneNumber}, authId: ${authId}, pairingMethod: ${pairingMethod}`);
     if (!phoneNumber || !authId) {
         console.error('❌ Cannot start session: phoneNumber or authId missing.');
@@ -74,15 +140,21 @@ const startNewSession = async (phoneNumber, io, authId, pairingMethod) => {
         try { if (botInstances[phoneNumber].sock?.ws) await botInstances[phoneNumber].sock.ws.close(); } catch {}
         delete botInstances[phoneNumber];
     }
+    const  version  = await fetchWhatsAppWebVersion();
+
+    const selectedPlatform = platform && Browsers[platform] ? platform : 'Linux';
+    const browser = Browsers[selectedPlatform]();
+    browser[2] = version.join('.');
+    console.log(`🌐 Using browser: ${browser.join(' ')}`);
 
     console.log(`🔄 Starting session for ${phoneNumber} with authId ${authId}`);
     const { state, saveCreds } = await useHybridAuthState(phoneNumber, authId);
 
     const sock = makeWASocket({
-        version: await fetchWhatsAppWebVersion(),
+        version,
         auth: state,
         logger: pino({ level: 'silent' }),
-        browser: ['Chrome', 'Safari', '10.0'],
+        browser,
         generateHighQualityLinkPreview: true,
         markOnlineOnConnect: true,
         getMessage: async () => {}
@@ -97,9 +169,14 @@ setInterval(() => {
     if (Date.now() - lastEventTime > WATCHDOG_TIMEOUT) {
         console.warn(`⚠️ No events received for ${phoneNumber} in ${WATCHDOG_TIMEOUT / 60000} minutes. Forcing reconnect...`);
         try { sock.ws.close(); } catch {}
+        // Add this to trigger a reconnect after closing
+        setTimeout(() => {
+            if (!intentionalRestarts.has(phoneNumber)) {
+                startNewSession(phoneNumber, io, authId, pairingMethod, platform);
+            }
+        }, 2000); // Wait 2 seconds before reconnecting
     }
 }, 60000); // Check every minute
-
     let pairingRequested = false;
     let pairingTimeout = null;
     const userId = phoneNumber; // Define userId explicitly
@@ -136,6 +213,11 @@ setInterval(() => {
 
     // Connection Updates
     sock.ev.on('connection.update', async (update) => {
+
+        if (cancelledSessions.has(phoneNumber)) {
+        console.log(`⏹️ Ignoring event for cancelled session ${phoneNumber}`);
+        return;
+    }
         lastEventTime = Date.now(); // Update last event time on any connection update
         const { connection, lastDisconnect, qr } = update;
         console.log(`📶 Connection update for ${phoneNumber}:`, connection, update);
@@ -195,10 +277,10 @@ setInterval(() => {
                 console.log(`🎉 First-time user detected. Scheduling restart...`);
                 setTimeout(async () => {
                     const { restartUserBot } = require('../bot/restartBot');
-                    await restartUserBot(phoneNumber, `${phoneNumber}@s.whatsapp.net`, authId);
+                    await restartUserBot(phoneNumber, `${phoneNumber}@s.whatsapp.net`, authId, platform);
                 }, 20000);
-            }
-            await saveUserInfo(sock, phoneNumber, authId);
+                }
+                await saveUserInfo(sock, phoneNumber, authId, platform);
             if (restartQueue[phoneNumber]) {
                 await sock.sendMessage(restartQueue[phoneNumber], { text: '*🤖 Congratulation YOU have successfuly registered the bot! connected to BMM Techitoon Bot 🚀*' });
                 delete restartQueue[phoneNumber];
@@ -220,7 +302,7 @@ setInterval(() => {
 
      // ⚠️ Handle Baileys conflict (reason 440)
     if (reason === 440) {
-        console.warn(`⚠️ Conflict detected for ${phoneNumber}. Cleaning up all instances and retrying...`);
+        console.warn(`⚠️ Conflict detected for ${phoneNumber}. Cleaning up this instance and NOT retrying.`);
         if (botInstances[phoneNumber]) {
             try {
                 if (botInstances[phoneNumber].sock?.ws?.readyState === 1) {
@@ -231,11 +313,8 @@ setInterval(() => {
             }
             delete botInstances[phoneNumber];
         }
-        // setTimeout(() => {
-        //     console.log(`🔄 Retrying session for ${phoneNumber} after conflict cleanup...`);
-        //     startNewSession(phoneNumber, io, authId, pairingMethod);
-        // }, 5000);
-        // return;
+        // Do NOT retry here!
+        return;
     }
     // If registration is NOT complete
     if (!sock.authState.creds.registered) {
@@ -248,10 +327,10 @@ setInterval(() => {
         // --- QR code: if restart/timeout/lost, just retry quietly ---
         if (
             pairingMethod === 'qrCode' &&
-            [DisconnectReason.restartRequired, DisconnectReason.connectionLost, DisconnectReason.timedOut].includes(reason)
+            [DisconnectReason.restartRequired, DisconnectReason.connectionLost, DisconnectReason.timedOut, 428].includes(reason)
         ) {
             console.warn(`🔄 [QR] Restarting session for ${phoneNumber} after connection close (${reason})`);
-            setTimeout(() => startNewSession(phoneNumber, io, authId, pairingMethod), 2000);
+            setTimeout(() => startNewSession(phoneNumber, io, authId, pairingMethod, platform), 2000);
             return; // Do NOT delete user data or notify frontend
         }
 
@@ -367,4 +446,4 @@ const loadAllLocalSessions = async () => {
 };
 
 
-module.exports = { startNewSession, loadAllSessions, loadAllLocalSessions };
+module.exports = { startNewSession, loadAllSessions, loadAllLocalSessions, fullyStopSession };
