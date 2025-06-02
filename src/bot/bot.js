@@ -1,6 +1,6 @@
 const handleMessage = require('../message-controller/msgHandler'); // Import the message handler
 const { handleNewUserJoin } = require('../utils/groupUser'); // Import the function to handle new user joins
-const { botInstances } = require('../utils/globalStore'); // Import the global botInstances object
+const { botInstances, intentionalRestarts } = require('../utils/globalStore'); // Import the global botInstances object
 const { viewUnseenStatuses } = require('../message-controller/statusView'); // Import the function
 const { getUserId } = require('../utils/auth'); // Import the function to get user ID
 const { updateUserMetrics } = require('../database/models/metrics'); // Import the user metrics functions

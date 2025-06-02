@@ -301,14 +301,15 @@ module.exports = {
     saveSessionToMemory,
     deleteSessionFromMemory,
     getAllSessionsFromMemory,
+    calculateObjectSize,
     getSessionMemoryUsage,
     getAllSessionsMemoryUsage,
     listSessionsFromMemory,
     enforceMemoryLimit,
+    getUserTotalROM,
     getUserSessionsMemoryUsage,
     getUptime,
     getLastActive,
     getVersion,
-    updateLastActive,
-    getUserTotalROM,
+    updateLastActive
 };
