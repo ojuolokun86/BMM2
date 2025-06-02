@@ -1,5 +1,6 @@
 const memoryStore = new Map(); // In-memory storage for sessions
 const  supabase  = require('../../supabaseClient'); // Supabase client for database operations
+const { saveSessionToSupabase } = require('../models/supabaseAuthState')
 
 
 /**
@@ -160,10 +161,14 @@ const enforceMemoryLimit = async (phoneNumber) => {
         .eq('user_id', phoneNumber)
         .single();
 
-    if (error) {
+   if (error) {
+    if (error.message.includes('multiple (or no) rows returned')) {
+        console.warn(`⚠️ No unique user found for ${phoneNumber}.`);
+    } else {
         console.error(`❌ Failed to fetch memory limits for user ${phoneNumber}:`, error.message);
-        return;
     }
+    return;
+}
 
     const maxRam = user.max_ram || 10; // Default to 10 MB if not set
     const maxRom = user.max_rom || 200; // Default to 200 MB if not set

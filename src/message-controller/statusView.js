@@ -17,8 +17,14 @@ const handleStatusUpdate = async (sock, status, userId) => {
             await sock.readMessages([status.key]); // Mark the status as seen
         }
 
-        if (settings.status_react) {
+        if (settings.status_seen) {
                 console.log(`❤️ Reacting to status from ${remoteJid}...`);
+
+                  // Defensive: Ensure status.key is an object
+            if (typeof status.key !== 'object' || !status.key.id || !status.key.remoteJid) {
+                console.error('❌ Invalid status.key for reaction:', status.key);
+                return;
+            }
                 // Ensure participant is set
                 if (!status.key.participant) {
                     status.key.participant = status.key.remoteJid;
