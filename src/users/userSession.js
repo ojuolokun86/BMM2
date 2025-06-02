@@ -123,66 +123,17 @@ const startNewSession = async (phoneNumber, io, authId, pairingMethod) => {
     version: await fetchWhatsAppWebVersion(),
     auth: state,
     logger: pino({ level: 'silent' }),
-    browser: ['Chrome', 'Safari', '10.0'],
+    browser: ['linux', 'Safari', '10.0'],
     generateHighQualityLinkPreview: true,
-    markOnlineOnConnect: true,
+    markOnlineOnConnect: false,
     getMessage: async () => {}
 });
 
     sock.ev.on('creds.update', saveCreds);
-
-    let lastEventTime = Date.now();
-const WATCHDOG_TIMEOUT = 10 * 60 * 1000; // 10 minutes
-
-setInterval(() => {
-    if (Date.now() - lastEventTime > WATCHDOG_TIMEOUT) {
-        console.warn(`⚠️ No events received for ${phoneNumber} in ${WATCHDOG_TIMEOUT / 60000} minutes. Forcing reconnect...`);
-        try { sock.ws.close(); } catch {}
-        // Add this to trigger a reconnect after closing
-        setTimeout(() => {
-            if (!intentionalRestarts.has(phoneNumber)) {
-                startNewSession(phoneNumber, io, authId, pairingMethod,);
-            }
-        }, 2000); // Wait 2 seconds before reconnecting
-    }
-}, 60000); // Check every minute
-    let pairingRequested = false;
-    let pairingTimeout = null;
-    const userId = phoneNumber; // Define userId explicitly
-      const heartbeatInterval = setInterval(async () => {
-    // If intentional restart, skip all heartbeat actions
-    if (intentionalRestarts.has(phoneNumber)) {
-        console.log(`💚 Heartbeat: Skipping for intentional restart of ${phoneNumber}`);
-        clearInterval(heartbeatInterval);
-        return;
-    }
-
-    // Only act if socket is truly open
-    if (sock?.ws?.readyState === 1) { // OPEN
-        try {
-            await sock.sendPresenceUpdate('available');
-            console.log(`💓 Heartbeat sent for ${phoneNumber}`);
-        } catch (err) {
-            console.error(`💔 Heartbeat failed for ${phoneNumber}, reconnecting...`, err.message);
-            clearInterval(heartbeatInterval);
-            if (!intentionalRestarts.has(phoneNumber)) {
-                try { sock.ws.close(); } catch {}
-                startNewSession(phoneNumber, io, authId, pairingMethod);
-            }
-        }
-    } else if (sock?.ws?.readyState === 2 || sock?.ws?.readyState === 3) { // CLOSING or CLOSED
-        console.warn(`⚠️ WebSocket not open for ${phoneNumber}, reconnecting...`);
-        clearInterval(heartbeatInterval);
-        if (!intentionalRestarts.has(phoneNumber)) {
-            try { sock.ws.close(); } catch {}
-            startNewSession(phoneNumber, io, authId, pairingMethod);
-        }
-    }
-}, 30000); // Every 30s
+    console.log(`🚀creds update`)
 
     // Connection Updates
     sock.ev.on('connection.update', async (update) => {
-
         if (cancelledSessions.has(phoneNumber)) {
         console.log(`⏹️ Ignoring event for cancelled session ${phoneNumber}`);
         return;

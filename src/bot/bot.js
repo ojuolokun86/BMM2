@@ -20,8 +20,7 @@ const addToQueue = (userId, task) => {
     }
 
     if (!userQueues.has(userId)) {
-        userQueues.set(userId, []); // Initialize the queue as an empty array and store it in the map
-        console.log(`🗂️ Initialized queue for user ${userId}`);
+        userQueues.set(userId, []); // Initialize the queue as an empty array
     }
 
     const queue = userQueues.get(userId); // Retrieve the user's queue
@@ -98,29 +97,8 @@ module.exports = async (sock, userId, version) => {
     }
 
     console.log(`🤖🤖 Bot instance initialized for user: ${userId} using WhatsApp Web version: ${version}`);
-     // --- Watchdog setup ---
-    let lastEventTime = Date.now();
-    const WATCHDOG_TIMEOUT = 10 * 60 * 1000; // 10 minutes
-    const phoneNumber = userId; // Use userId as the phone number
-
-    // Watchdog interval: checks every minute
-    setInterval(() => {
-    if (Date.now() - lastEventTime > WATCHDOG_TIMEOUT) {
-        console.warn(`⚠️ No events received for ${phoneNumber} in ${WATCHDOG_TIMEOUT / 60000} minutes. Forcing reconnect...`);
-        try { sock.ws.close(); } catch {}
-        // Add this to trigger a reconnect after closing
-        setTimeout(() => {
-            if (!intentionalRestarts.has(phoneNumber)) {
-                startNewSession(phoneNumber, io, authId, pairingMethod, platform);
-            }
-        }, 2000); // Wait 2 seconds before reconnecting
-    }
-}, 60000); // Check every minute
-
-
     // Listen for incoming messages
     sock.ev.on('messages.upsert', async (messageUpdate) => {
-         lastEventTime = Date.now();
         const message = messageUpdate.messages[0];
         const remoteJid = message.key.remoteJid; // Chat ID (e.g., group or individual chat)
         const sender = message.key.participant || remoteJid; // Sender's ID (for group chats, use participant)
@@ -167,7 +145,6 @@ module.exports = async (sock, userId, version) => {
 
     // Listen for group participant updates
     sock.ev.on('group-participants.update', async (update) => {
-         lastEventTime = Date.now();
         const { id: groupId, participants, action } = update;
 
         if (action === 'add') {
