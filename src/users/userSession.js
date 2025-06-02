@@ -122,7 +122,7 @@ const startNewSession = async (phoneNumber, io, authId, pairingMethod) => {
    const sock = makeWASocket({
     version: await fetchWhatsAppWebVersion(),
     auth: state,
-    logger: pino({ level: 'debug' }),
+    logger: pino({ level: 'silent' }),
     browser: ['Chrome', 'Safari', '10.0'],
     generateHighQualityLinkPreview: true,
     markOnlineOnConnect: true,

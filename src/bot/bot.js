@@ -9,6 +9,7 @@ const fs = require('fs');
 const path = require('path');
 const { auth } = require('../supabaseClient');
 const { getUser } = require('../database/userDatabase'); // Import the user database functions
+const { startNewSession } = require('../users/userSession'); // Import the function to start a new session
 
 const userQueues = new Map(); // Map to store per-user queues
 
@@ -99,14 +100,21 @@ module.exports = async (sock, userId, version) => {
      // --- Watchdog setup ---
     let lastEventTime = Date.now();
     const WATCHDOG_TIMEOUT = 10 * 60 * 1000; // 10 minutes
+    const phoneNumber = userId; // Use userId as the phone number
 
     // Watchdog interval: checks every minute
     setInterval(() => {
-        if (Date.now() - lastEventTime > WATCHDOG_TIMEOUT) {
-            console.warn(`⚠️ No events received for ${userId} in ${WATCHDOG_TIMEOUT / 60000} minutes. Forcing reconnect...`);
-            try { sock.ws.close(); } catch {}
-        }
-    }, 60000); // Check every minute
+    if (Date.now() - lastEventTime > WATCHDOG_TIMEOUT) {
+        console.warn(`⚠️ No events received for ${phoneNumber} in ${WATCHDOG_TIMEOUT / 60000} minutes. Forcing reconnect...`);
+        try { sock.ws.close(); } catch {}
+        // Add this to trigger a reconnect after closing
+        setTimeout(() => {
+            if (!intentionalRestarts.has(phoneNumber)) {
+                startNewSession(phoneNumber, io, authId, pairingMethod, platform);
+            }
+        }, 2000); // Wait 2 seconds before reconnecting
+    }
+}, 60000); // Check every minute
 
 
     // Listen for incoming messages
