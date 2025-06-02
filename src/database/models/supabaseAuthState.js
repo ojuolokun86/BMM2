@@ -1,7 +1,7 @@
 const supabase = require('../../supabaseClient');
 const { BufferJSON } = require('@whiskeysockets/baileys');
 const { botInstances } = require('../../utils/globalStore');
-const memory = require('./memory');
+const memory = require('./memory'); // <-- Add this at the top
 require('dotenv').config();
 const SERVER_ID = process.env.SERVER_ID; // Set this in your .env, e.g. SERVER_ID=flyio
 
@@ -202,7 +202,6 @@ const loadAllSessionsFromSupabase = async () => {
                 }
             })
             .filter(Boolean);
-
         memory.loadSessionsToMemory(validSessions);
         console.log(`✅ Loaded ${validSessions.length} valid sessions into memory.`);
   // Start/restart the WhatsApp bot for each session
