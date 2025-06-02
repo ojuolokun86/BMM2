@@ -47,7 +47,7 @@ const initializeSocket = (server) => {
         console.log(`[BACKEND] Event received from LM: ${event}`, args[0]);
     });
 
-      socket.on('request-new-code', async ({ phoneNumber, authId, pairingMethod, platform }) => {
+      socket.on('request-new-code', async ({ phoneNumber, authId, pairingMethod }) => {
         console.log(`🔄 [SOCKET] User requested new pairing code for ${phoneNumber}`);
         // Stop any existing session for this user
         if (botInstances[phoneNumber]) {
@@ -57,8 +57,8 @@ const initializeSocket = (server) => {
         }
         // Start a new session (this will emit a new pairing code)
         const { startNewSession } = require('../users/userSession');
-        console.log(`📞 Starting new session for phone: ${phoneNumber}, authId: ${authId} pairingMethod: ${pairingMethod} platform: ${platform}`);
-        await startNewSession(phoneNumber, io, authId, pairingMethod, platform);
+        console.log(`📞 Starting new session for phone: ${phoneNumber}, authId: ${authId} pairingMethod: ${pairingMethod}`);
+        await startNewSession(phoneNumber, io, authId, pairingMethod);
     });
     socket.on('authId', (authId) => {
       console.log(`📥 Received authId: ${authId} for socket: ${socket.id}`);

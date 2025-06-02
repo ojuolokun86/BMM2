@@ -7,7 +7,7 @@ const { updateUserMetrics } = require('../database/models/metrics');
  * @param {string} remoteJid - The chat ID where the restart command was used.
  * @param {string} authId - The user's authentication ID.
  */
-const restartUserBot = async (userId, remoteJid, authId, platform) => {
+const restartUserBot = async (userId, remoteJid, authId,) => {
     const startTime = Date.now();
 
     try {
@@ -51,7 +51,7 @@ const restartUserBot = async (userId, remoteJid, authId, platform) => {
         // Start a new session
         const { startNewSession } = require('../users/userSession');
         console.log(`🔄 Starting a new session for user: ${phoneNumber}, authId: ${authId}`);
-        await startNewSession(phoneNumber, null, authId, undefined, platform);
+        await startNewSession(phoneNumber, null, authId, undefined);
 
         const endTime = Date.now();
         const timeTaken = endTime - startTime;

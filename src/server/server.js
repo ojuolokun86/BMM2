@@ -51,8 +51,8 @@ const createServer = () => {
 });
   // Start a new session
   app.post('/api/start-session', validateToken, async (req, res) => {
-    const { phoneNumber, authId, pairingMethod, platform } = req.body;
-    console.log('➡️ [start-session] Received:', { phoneNumber, authId, pairingMethod, platform });
+    const { phoneNumber, authId, pairingMethod,} = req.body;
+    console.log('➡️ [start-session] Received:', { phoneNumber, authId, pairingMethod, });
 
     if (!phoneNumber || !authId) {
         console.error('❌ [start-session] Missing phoneNumber or authId');
@@ -114,7 +114,7 @@ const createServer = () => {
     // Continue with registration...
     try {
         console.log('🚦 [start-session] Calling startNewSession...');
-        await startNewSession(phoneNumber, io, authId, pairingMethod, platform);
+        await startNewSession(phoneNumber, io, authId, pairingMethod,);
         console.log('✅ [start-session] Session started successfully.');
         return res.status(200).json({ message: 'Session started. Please scan the QR code.' });
     } catch (err) {
