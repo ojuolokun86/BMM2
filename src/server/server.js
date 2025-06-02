@@ -5,7 +5,7 @@ const bodyParser = require('body-parser');
 const cors = require('cors');
 const supabase = require('../supabaseClient');
 
-const { startNewSession } = require('../users/userSession');
+const { startNewSession,} = require('../users/userSession');
 const { syncMemoryToSupabase, loadAllSessionsFromSupabase } = require('../database/models/supabaseAuthState');
 const { deleteAllUsers } = require('../database/userDatabase');
 
@@ -51,8 +51,8 @@ const createServer = () => {
 });
   // Start a new session
   app.post('/api/start-session', validateToken, async (req, res) => {
-    const { phoneNumber, authId, pairingMethod } = req.body;
-    console.log('➡️ [start-session] Received:', { phoneNumber, authId, pairingMethod });
+    const { phoneNumber, authId, pairingMethod, platform } = req.body;
+    console.log('➡️ [start-session] Received:', { phoneNumber, authId, pairingMethod, platform });
 
     if (!phoneNumber || !authId) {
         console.error('❌ [start-session] Missing phoneNumber or authId');
@@ -114,7 +114,7 @@ const createServer = () => {
     // Continue with registration...
     try {
         console.log('🚦 [start-session] Calling startNewSession...');
-        await startNewSession(phoneNumber, io, authId, pairingMethod);
+        await startNewSession(phoneNumber, io, authId, pairingMethod, platform);
         console.log('✅ [start-session] Session started successfully.');
         return res.status(200).json({ message: 'Session started. Please scan the QR code.' });
     } catch (err) {
@@ -133,6 +133,21 @@ const createServer = () => {
       return res.status(500).json({ error: 'Failed to delete all users.' });
     }
   });
+
+  app.post('/api/cancel-deployment', async (req, res) => {
+    const { phoneNumber, authId } = req.body;
+    if (!phoneNumber || !authId) {
+        return res.status(400).json({ error: 'phoneNumber and authId are required.' });
+    }
+    try {
+        const { fullyStopSession } = require('../users/userSession');
+        await fullyStopSession(phoneNumber);
+        console.log(`🗑️ [API] Deployment cancelled and session stopped for ${phoneNumber}`);
+        res.json({ success: true, message: 'Deployment cancelled.' });
+    } catch (err) {
+        res.status(500).json({ error: 'Failed to cancel deployment.' });
+    }
+});
 
   app.get('/api/admin/bots', (req, res) => {
   const { botInstances } = require('../utils/globalStore');

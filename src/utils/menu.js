@@ -63,6 +63,8 @@ const getMenu = (prefix = '.') => {
 ┃ 👁️ *${prefix}view* - Repost view-once media  
 ┃ 👀 *${prefix}status on* - Enable status viewing  
 ┃ 🚫 *${prefix}status off* - Disable status viewing  
+┃ 👀 *${prefix}status reacton* - Enable status reaction
+┃ 🚫 *${prefix}status reactoff* - Disable status reaction
 ┃ ✏️ *${prefix}setname* <name> - Update the bot's display name  
 ┃ 🖼️ *${prefix}setpic* - Set the bot's profile picture  
 ┃ ✏️ *${prefix}setstatus* <status> - Update the bot's "About Me" status  

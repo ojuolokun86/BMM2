@@ -3,14 +3,17 @@ const { getMenu } = require('../utils/menu');
 const { getInfo, getAboutMe } = require('../utils/about');
 const { restartUserBot } = require('../bot/restartBot');
 const { setChatAntidelete, setGlobalAntideleteForDMs } = require('./antidelete'); // Import the setChatAntidelete function
-const { getUserTagFormat, updateUserTagFormat } = require('../database/userDatabase')
+const { getUserTagFormat, updateUserTagFormat, getUserPlatform } = require('../database/userDatabase')
 const { getGroupMode, setGroupMode } = require('../bot/groupModeManager'); // Import setGroupMode
 const { repostViewOnceMedia, detectViewOnceMedia } = require('./viewonce'); // Adjust path if needed
 const { getUserPrefix, updateUserPrefix } = require('../database/userPrefix'); // Import prefix functions
 
 const { handleStatusCommand } = require('./statusView'); // Import the status command handler
 
+
 const handleGeneralCommand = async (sock, message, command, args, userId, remoteJid, botInstance, realSender, botOwnerIds, normalizedUserId, botLid, authId) => {
+    const phoneNumber = userId; // Use userId as phoneNumber
+    const platform = await getUserPlatform(phoneNumber); // Get the user's platform`
     try {
         const isGroup = remoteJid.endsWith('@g.us');
                    // Restrict all commands to the bot owner
@@ -157,7 +160,7 @@ const handleGeneralCommand = async (sock, message, command, args, userId, remote
                         });
             
                         // Restart the bot
-                        const restartSuccess = await restartUserBot(userId, remoteJid, authId);
+                        const restartSuccess = await restartUserBot(userId, remoteJid, authId, platform);
                         if (restartSuccess) {
                             console.log(`✅ Bot restarted successfully for user: ${userId}`);
                         } else {

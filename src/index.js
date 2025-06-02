@@ -7,8 +7,10 @@ const { botInstances } = require('./utils/globalStore');
 const { createServer } = require('./server/server'); // Import the server creation function
 require('dotenv').config(); // Ensure dotenv is configured at the top of the file
 const { startNewSession, loadAllSessions, loadAllLocalSessions } = require('./users/userSession'); // Import the function to load sessions
+const { platform } = require('os');
 console.log("Starting app...");
 console.log("PORT =", process.env.PORT);
+const { getUserPlatform} = require('./database/userDatabase') // Get the user's platform}
 
 
 
@@ -56,13 +58,6 @@ process.on('unhandledRejection', (reason, promise) => {
             const loadedSessions = await loadAllSessions(); // Ensure this is awaited
             return loadedSessions;
         }, 'Loading user sessions');
-
-        // Initialize each user session
-        for (const session of sessions) {
-            await retryOperation(async () => {
-               await startNewSession(session.phoneNumber, null, session.authId); // ✅ Pass authId!
-            }, `Restoring session for user: ${session.phoneNumber} (authId: ${session.authId})`);
-        }
 
         console.log(`✅ All user sessions initialized.`);
     } catch (error) {
