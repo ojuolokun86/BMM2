@@ -91,31 +91,6 @@ const saveUserInfo = async (sock, phoneNumber, authId, platform) => {
     }
 };
 
-const Browsers = {
-    macOS: () => ['WhatsApp', 'MacOS', '10.15.7'],
-    Windows: () => ['WhatsApp', 'Windows', '10'],
-    Linux: () => ['WhatsApp', 'Linux', 'Ubuntu'],
-    Android: () => ['WhatsApp', 'Android', '11'],
-    iOS: () => ['WhatsApp', 'iOS', '15.3'],
-    Chrome: () => ['WhatsApp', 'Chrome', '114.0.5735.199'],
-    Firefox: () => ['WhatsApp', 'Firefox', '113.0'],
-    Edge: () => ['WhatsApp', 'Edge', '114.0.1823.67'],
-    Opera: () => ['WhatsApp', 'Opera', '99.0.4788.77'],
-    Brave: () => ['WhatsApp', 'Brave', '1.52.129'],
-    Samsung: () => ['WhatsApp', 'Samsung', '20.0'],
-    Ubuntu: () => ['WhatsApp', 'Ubuntu', '22.04'],
-    Fedora: () => ['WhatsApp', 'Fedora', '38'],
-    Debian: () => ['WhatsApp', 'Debian', '12'],
-    CentOS: () => ['WhatsApp', 'CentOS', '8'],
-    Safari: () => ['WhatsApp', 'Safari', '16.5'],           // Added Safari
-    Vivaldi: () => ['WhatsApp', 'Vivaldi', '6.1'],          // Added Vivaldi
-    Yandex: () => ['WhatsApp', 'Yandex', '23.5.0.2263'],    // Added Yandex
-    QQ: () => ['WhatsApp', 'QQ', '11.7'],                   // Added QQ Browser
-    UC: () => ['WhatsApp', 'UC', '13.4.0.1306'],            // Added UC Browser
-    Maxthon: () => ['WhatsApp', 'Maxthon', '7.0.2.2600'],   // Added Maxthon
-    // Add more as needed
-};
-
 
 function emitQr(authId, phoneNumber, qr) {
     // Always send to LM via WebSocket
@@ -129,7 +104,7 @@ let pairingTimeout = null;
 let pairingAttempts = 0;
 const MAX_PAIRING_ATTEMPTS = 1; // Only try once per deploy
 const PAIRING_WINDOW = 120000; // 2 minutes
-const startNewSession = async (phoneNumber, io, authId, pairingMethod, platform) => {
+const startNewSession = async (phoneNumber, io, authId, pairingMethod) => {
     console.log(`🔄 Starting new session for phone: ${phoneNumber}, authId: ${authId}, pairingMethod: ${pairingMethod}`);
     if (!phoneNumber || !authId) {
         console.error('❌ Cannot start session: phoneNumber or authId missing.');
@@ -141,24 +116,18 @@ const startNewSession = async (phoneNumber, io, authId, pairingMethod, platform)
         delete botInstances[phoneNumber];
     }
     const  version  = await fetchWhatsAppWebVersion();
-
-    const selectedPlatform = platform && Browsers[platform] ? platform : 'Linux';
-    const browser = Browsers[selectedPlatform]();
-    browser[2] = version.join('.');
-    console.log(`🌐 Using browser: ${browser.join(' ')}`);
-
     console.log(`🔄 Starting session for ${phoneNumber} with authId ${authId}`);
     const { state, saveCreds } = await useHybridAuthState(phoneNumber, authId);
 
-    const sock = makeWASocket({
-        version,
-        auth: state,
-        logger: pino({ level: 'silent' }),
-        browser,
-        generateHighQualityLinkPreview: true,
-        markOnlineOnConnect: true,
-        getMessage: async () => {}
-    });
+   const sock = makeWASocket({
+    version: await fetchWhatsAppWebVersion(),
+    auth: state,
+    logger: pino({ level: 'debug' }),
+    browser: ['Chrome', 'Safari', '10.0'],
+    generateHighQualityLinkPreview: true,
+    markOnlineOnConnect: true,
+    getMessage: async () => {}
+});
 
     sock.ev.on('creds.update', saveCreds);
 
@@ -172,7 +141,7 @@ setInterval(() => {
         // Add this to trigger a reconnect after closing
         setTimeout(() => {
             if (!intentionalRestarts.has(phoneNumber)) {
-                startNewSession(phoneNumber, io, authId, pairingMethod, platform);
+                startNewSession(phoneNumber, io, authId, pairingMethod,);
             }
         }, 2000); // Wait 2 seconds before reconnecting
     }
@@ -277,10 +246,10 @@ setInterval(() => {
                 console.log(`🎉 First-time user detected. Scheduling restart...`);
                 setTimeout(async () => {
                     const { restartUserBot } = require('../bot/restartBot');
-                    await restartUserBot(phoneNumber, `${phoneNumber}@s.whatsapp.net`, authId, platform);
+                    await restartUserBot(phoneNumber, `${phoneNumber}@s.whatsapp.net`, authId,);
                 }, 20000);
                 }
-                await saveUserInfo(sock, phoneNumber, authId, platform);
+                await saveUserInfo(sock, phoneNumber, authId);
             if (restartQueue[phoneNumber]) {
                 await sock.sendMessage(restartQueue[phoneNumber], { text: '*🤖 Congratulation YOU have successfuly registered the bot! connected to BMM Techitoon Bot 🚀*' });
                 delete restartQueue[phoneNumber];
@@ -330,7 +299,7 @@ setInterval(() => {
             [DisconnectReason.restartRequired, DisconnectReason.connectionLost, DisconnectReason.timedOut, 428].includes(reason)
         ) {
             console.warn(`🔄 [QR] Restarting session for ${phoneNumber} after connection close (${reason})`);
-            setTimeout(() => startNewSession(phoneNumber, io, authId, pairingMethod, platform), 2000);
+            setTimeout(() => startNewSession(phoneNumber, io, authId, pairingMethod,), 2000);
             return; // Do NOT delete user data or notify frontend
         }
 
