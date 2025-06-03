@@ -1,96 +1,108 @@
 const { getEmojiForCommand } = require('./emojiReaction');
-
+const presenceTimers = {};
 
 /**
  * Centralized function to send messages to a chat.
- * @param {object} botInstance - The bot instance to send the message through.
- * @param {string} chatId - The chat ID to send the message to.
- * @param {object} options - Options for sending the message.
- * @param {string} [options.message] - The message text to send.
- * @param {array} [options.mentions] - Optional mentions in the message.
- * @param {Buffer} [options.media] - The media content to send (image, video, audio, document, or voice note).
- * @param {string} [options.caption] - The caption for the media message.
- * @param {string} [options.mediaType] - The type of media (image, video, audio, document, or voice note).
- * @param {object} [options.quotedMessage] - The message to quote.
  */
 const sendToChat = async (botInstance, chatId, options = {}) => {
     const { message, mentions = [], media, caption, mediaType, quotedMessage } = options;
 
     try {
-        console.log(`🔍 Debugging "chatId" value:`, chatId);
-        console.log(`🔍 Debugging "message" value:`, message);
-        console.log(`🔍 Debugging "media" value:`, media);
+        console.log(`🔍 Debugging "chatId":`, chatId);
+        console.log(`🔍 Message:`, message);
+        console.log(`🔍 Media:`, media);
 
-        // Ensure botInstance is valid
         if (!botInstance || typeof botInstance.sendMessage !== 'function') {
             throw new TypeError('Invalid botInstance: sendMessage is not a function.');
         }
 
-        // Ensure chatId is valid
         if (!chatId || (!chatId.endsWith('@s.whatsapp.net') && !chatId.endsWith('@g.us'))) {
-            throw new Error(`Invalid chatId: "${chatId}". Expected a valid WhatsApp JID.`);
+            throw new Error(`Invalid chatId: "${chatId}". Must end with "@s.whatsapp.net" or "@g.us".`);
         }
 
-        // Ensure at least one of "message" or "media" is provided
         if (!message && !media) {
-            throw new Error('Either "message" or "media" must be provided to sendToChat.');
+            throw new Error('Either "message" or "media" must be provided.');
         }
 
-        // Handle media messages
+        // 🧠 Send presence update (composing, then available)
+        try {
+            await botInstance.sendPresenceUpdate('composing', chatId);
+            await new Promise(resolve => setTimeout(resolve, 800));
+            await botInstance.sendPresenceUpdate('available', chatId);
+        } catch (err) {
+            console.warn(`⚠️ Failed to update presence for ${chatId}:`, err.message);
+        }
+
+        // 📷 Media message
         if (media) {
-            const resolvedMediaType = mediaType || (media && 'image');
-            if (!['image', 'video', 'audio', 'document', 'voice'].includes(resolvedMediaType)) {
-                throw new Error('Invalid media type. Expected "image", "video", "audio", "document", or "voice".');
+            const resolvedType = mediaType || 'image';
+            if (!['image', 'video', 'audio', 'document', 'voice'].includes(resolvedType)) {
+                throw new Error(`Invalid mediaType: ${resolvedType}`);
             }
 
             const mediaPayload = {
-                [resolvedMediaType]: media,
+                [resolvedType]: media,
                 caption: caption || '',
                 mentions,
+                ...(resolvedType === 'audio' || resolvedType === 'voice' ? { ptt: resolvedType === 'voice' } : {}),
+                ...(quotedMessage ? { quoted: quotedMessage } : {})
             };
 
-            if (resolvedMediaType === 'audio' || resolvedMediaType === 'voice') {
-                mediaPayload.ptt = resolvedMediaType === 'voice';
-            }
-
-            if (quotedMessage) {
-                mediaPayload.quoted = quotedMessage;
-            }
-
             await botInstance.sendMessage(chatId, mediaPayload);
-            console.log(`✅ Media message sent to ${chatId} with caption: ${caption}`);
-            return;
+            console.log(`✅ Sent ${resolvedType} to ${chatId} with caption: ${caption}`);
         }
 
-        // Handle text messages
-        if (message) {
-            if (typeof message !== 'string') {
-                throw new TypeError(`Expected "message" to be a string, but got ${typeof message}`);
-            }
-
-            const textPayload = { text: message, mentions };
-            if (quotedMessage) {
-                textPayload.quoted = quotedMessage;
-            }
+        // 💬 Text message
+        if (message && typeof message === 'string') {
+            const textPayload = {
+                text: message,
+                mentions,
+                ...(quotedMessage ? { quoted: quotedMessage } : {})
+            };
 
             await botInstance.sendMessage(chatId, textPayload);
-            console.log(`✅ Message sent to ${chatId}: ${message}`);
+            console.log(`✅ Sent message to ${chatId}: ${message}`);
         }
+
+        // 👋 Mark bot as done (optional)
+        try {
+            await botInstance.sendPresenceUpdate('unavailable', chatId);
+        } catch (err) {
+            console.warn(`⚠️ Failed to mark bot as unavailable for ${chatId}:`, err.message);
+        }
+
     } catch (error) {
         console.error(`❌ Error sending message to ${chatId}:`, error);
     }
 };
+
+async function setDynamicPresence(botInstance, chatId, type = 'composing', cooldown = 5000) {
+    // Clear any existing timer for this chat
+    if (presenceTimers[chatId]) {
+        clearTimeout(presenceTimers[chatId]);
+    }
+    // Set the requested presence
+    await botInstance.sendPresenceUpdate(type, chatId);
+
+    // Set a timer to reset to unavailable after cooldown
+    presenceTimers[chatId] = setTimeout(async () => {
+        try {
+            await botInstance.sendPresenceUpdate('unavailable', chatId);
+            // Optionally: delete the timer reference
+            delete presenceTimers[chatId];
+        } catch (err) {
+            console.warn(`⚠️ Failed to reset presence for ${chatId}:`, err.message);
+        }
+    }, cooldown);
+}
+
 /**
  * Send a reaction to a specific message.
- * @param {object} botInstance - The bot instance to send the reaction through.
- * @param {string} chatId - The chat ID where the message is located.
- * @param {string} messageId - The ID of the message to react to.
- * @param {string} command - The command name to determine the emoji.
  */
 const sendReaction = async (botInstance, chatId, messageId, command) => {
     try {
-        const emoji = getEmojiForCommand(command); // Get the emoji for the command
-        console.log(`🔍 Determined emoji for command "${command}": ${emoji}`); // Log the emoji
+        const emoji = getEmojiForCommand(command);
+        console.log(`🔍 Reaction emoji for "${command}": ${emoji}`);
 
         await botInstance.sendMessage(chatId, {
             react: {
@@ -98,10 +110,10 @@ const sendReaction = async (botInstance, chatId, messageId, command) => {
                 key: { id: messageId, remoteJid: chatId },
             },
         });
-        console.log(`✅ Reaction "${emoji}" sent to message ${messageId} in ${chatId}`);
+        console.log(`✅ Reaction "${emoji}" sent to ${chatId} (msg: ${messageId})`);
     } catch (error) {
-        console.error(`❌ Error sending reaction to message ${messageId} in ${chatId}:`, error);
+        console.error(`❌ Failed to send reaction to ${chatId}:`, error);
     }
 };
 
-module.exports = { sendToChat, sendReaction };
+module.exports = { sendToChat, sendReaction, setDynamicPresence};

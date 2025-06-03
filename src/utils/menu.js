@@ -77,6 +77,7 @@ const getMenu = (prefix = '.') => {
 ┃ 🛡️ *${prefix}antidelete chatoff* - disable antidelete to all chat
 ┃ 🪲 *${prefix}bug* - Bug a whatsapp user
 ┃ 🛡️ *${prefix}protect* on/off - Enable or disable message protection
+┃ 🤖 *${prefix}logout* - logout from Bot 
 ╰───────────────────────╯
 
 📌 𝗣𝗥𝗢𝗧𝗘𝗖𝗧𝗜𝗢𝗡 𝗖𝗢𝗠𝗠𝗔𝗡𝗗𝗦:

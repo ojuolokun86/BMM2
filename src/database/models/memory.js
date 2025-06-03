@@ -153,21 +153,20 @@ const enforceMemoryLimit = async (phoneNumber) => {
     const sizeInBytes = calculateObjectSize(session);
     const sizeInMB = sizeInBytes / (1024 * 1024);
 
-    // Fetch the user's memory limits from Supabase
-    const { data: user, error } = await supabase
-        .from('users')
-        .select('max_ram, max_rom, auth_id')
-        .eq('user_id', phoneNumber)
-        .single();
+    let user;
+    try {
+        const { data, error } = await supabase
+            .from('users')
+            .select('max_ram, max_rom, auth_id')
+            .eq('user_id', phoneNumber)
+            .single();
 
-   if (error) {
-    if (error.message.includes('multiple (or no) rows returned')) {
-        console.warn(`⚠️ No unique user found for ${phoneNumber}.`);
-    } else {
-        console.error(`❌ Failed to fetch memory limits for user ${phoneNumber}:`, error.message);
+        if (error) throw error;
+        user = data;
+    } catch (error) {
+        console.error(`❌ Failed to fetch memory limits for user ${phoneNumber}:`, error.message || error);
+        return; // Don't enforce limits if we can't fetch them
     }
-    return;
-}
 
     const maxRam = user.max_ram || 10; // Default to 10 MB if not set
     const maxRom = user.max_rom || 200; // Default to 200 MB if not set

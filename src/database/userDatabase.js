@@ -6,6 +6,8 @@ const { deleteSessionFromSupabase, listSessionsFromSupabase } = require('./model
 const sessionsDir = path.join(__dirname, '../../sessions');
 const { botInstances } = require('../utils/globalStore'); // Import the bot instances
 const { deleteUserMetrics } = require('./models/metrics'); // Import the in-memory metrics map
+const { sessionTimers } = require('../utils/globalStore'); // Import your timers map
+const globalStore = require('../utils/globalStore');
 
 /**
  * Add or update a user in the `users` table in Supabase.
@@ -428,6 +430,36 @@ const deleteUserData = async (phoneNumber) => {
         // Get all possible keys for this user
         const keys = getPossibleUserKeys(phoneNumber);
 
+        // 0. Stop and clear all timers for this user
+        if (sessionTimers) {
+            for (const key of keys) {
+                if (sessionTimers[key]) {
+                    sessionTimers[key].forEach(clearInterval);
+                    delete sessionTimers[key];
+                    console.log(`⏹️ Cleared session timers for user: ${key}`);
+                }
+            }
+        }
+
+        // 0b. Remove dynamic presence and read receipt settings
+        if (globalStore.presenceSettings) {
+            for (const key of keys) {
+                delete globalStore.presenceSettings[key];
+            }
+        }
+        if (globalStore.readReceiptSettings) {
+            for (const key of keys) {
+                delete globalStore.readReceiptSettings[key];
+            }
+        }
+
+        // 0c. Mark user as deleted to ignore future messages
+        if (globalStore.deletedUsers) {
+            for (const key of keys) {
+                globalStore.deletedUsers[key] = true;
+            }
+        }
+
         // 1. Stop and remove the bot instance for all possible keys
         for (const key of keys) {
             if (botInstances[key]) {
@@ -477,7 +509,7 @@ const deleteUserData = async (phoneNumber) => {
             .delete()
             .eq('user_id', phoneNumber);
 
-            console.log(`✅ Deleting user ${phoneNumber} from the database.`);
+        console.log(`✅ Deleting user ${phoneNumber} from the database.`);
         if (userError) {
             console.error(`❌ Error deleting user ${phoneNumber} from the database:`, userError);
         } else {

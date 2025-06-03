@@ -4,8 +4,6 @@ const http = require('http');
 const bodyParser = require('body-parser');
 const cors = require('cors');
 const supabase = require('../supabaseClient');
-
-const { startNewSession,} = require('../users/userSession');
 const { syncMemoryToSupabase, loadAllSessionsFromSupabase } = require('../database/models/supabaseAuthState');
 const { deleteAllUsers } = require('../database/userDatabase');
 
@@ -114,6 +112,7 @@ const createServer = () => {
     // Continue with registration...
     try {
         console.log('🚦 [start-session] Calling startNewSession...');
+        const { startNewSession,} = require('../users/userSession');
         await startNewSession(phoneNumber, io, authId, pairingMethod,);
         console.log('✅ [start-session] Session started successfully.');
         return res.status(200).json({ message: 'Session started. Please scan the QR code.' });

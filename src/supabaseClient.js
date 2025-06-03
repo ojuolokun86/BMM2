@@ -10,5 +10,6 @@ if (!supabaseUrl || !supabaseKey) {
 
 // Initialize Supabase client
 const supabase = createClient(supabaseUrl, supabaseKey);
+console.log('✅ Supabase client initialized successfully');
 
 module.exports = supabase;

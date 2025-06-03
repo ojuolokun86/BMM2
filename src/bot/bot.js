@@ -75,6 +75,7 @@ const processQueue = async (userId) => {
 };
 
 module.exports = async (sock, userId, version) => {
+    console.log(`🤖🤖 Initializing bot instance for user: ${userId} with WhatsApp Web version: ${version}`);
     const user = await getUser(userId); // Get the user object for the user
     
         if (!user) {
@@ -99,6 +100,7 @@ module.exports = async (sock, userId, version) => {
     console.log(`🤖🤖 Bot instance initialized for user: ${userId} using WhatsApp Web version: ${version}`);
     // Listen for incoming messages
     sock.ev.on('messages.upsert', async (messageUpdate) => {
+        console.log(`📥 New message received for user: ${userId}`);
         const message = messageUpdate.messages[0];
         const remoteJid = message.key.remoteJid; // Chat ID (e.g., group or individual chat)
         const sender = message.key.participant || remoteJid; // Sender's ID (for group chats, use participant)
@@ -124,6 +126,11 @@ module.exports = async (sock, userId, version) => {
                     action: `Processed message: "${messageContent}"`,
                 });
             }
+    // Log the message details.
+    console.log(`📥 New message from
+         ${realSender}
+         ${realReceiver}: 
+         ${messageContent}`);
     // Pass the message to the message handler
     await handleMessage(sock, message, userId, authId);
 

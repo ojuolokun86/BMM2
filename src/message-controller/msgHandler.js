@@ -19,7 +19,7 @@ const { updateLastActive } = require('../database/models/memory'); // Import the
 const  { handleAntideleteSave } = require('./antidelete'); // Import the antidelete functions
 const { handleMessageSecurity, activateSecurity, isSecurityActive } = require('../security/superSecurity');
 const { getUserFromUsersTable, getUserSubscriptionLevel } = require('../database/userDatabase'); // To get subscription level
-
+const { setDynamicPresence } = require('../utils/messageUtils'); 
 
 
 
@@ -46,24 +46,24 @@ module.exports = async (sock, message, userId, authId) => {
 
     // Dynamically update presence if globalPresenceType is set for this bot instance
     const presenceSettings = globalStore.presenceSettings[botInstanceId];
-    if (presenceSettings) {
-        try {
-            await sock.sendPresenceUpdate(presenceSettings.globalPresenceType, remoteJid);
-            console.log(`🔄 Global dynamic presence updated to "${presenceSettings.globalPresenceType}" for: ${remoteJid}`);
-        } catch (error) {
-            console.error(`❌ Failed to update global dynamic presence for ${remoteJid}:`, error);
-        }
+if (presenceSettings) {
+    try {
+        // Use setDynamicPresence to apply presence with cooldown (e.g., 5 seconds)
+        await setDynamicPresence(sock, remoteJid, presenceSettings.globalPresenceType, 5000);
+        console.log(`🔄 Global dynamic presence updated to "${presenceSettings.globalPresenceType}" for: ${remoteJid} (with cooldown)`);
+    } catch (error) {
+        console.error(`❌ Failed to update global dynamic presence for ${remoteJid}:`, error);
     }
+}
 
         if (!isFromMe && !isStatus) {
     const botInstanceId = userId; // or your preferred instance key
     // For group messages, you may want to use participant JID
     const participant = message.key.participant || remoteJid;
 
-    if (globalStore.readReceiptSettings[botInstanceId] !== false) {
-        // Default is true (send read receipts)
+    if (globalStore.readReceiptSettings[botInstanceId] === true) {
         try {
-           await sock.readMessages([message.key]);
+            await sock.readMessages([message.key]);
             console.log('✅ Read receipt sent.');
         } catch (err) {
             console.error('❌ Failed to send read receipt:', err);

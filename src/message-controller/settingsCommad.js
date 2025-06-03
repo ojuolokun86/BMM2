@@ -2,6 +2,7 @@ const { downloadMediaMessage } = require('@whiskeysockets/baileys'); // Import m
 const { sendToChat } = require('../utils/messageUtils'); // Import the sendToChat function
 const { generateProfilePicture } = require('@whiskeysockets/baileys'); // Import the function
 const globalStore = require('../utils/globalStore'); // Import the global store
+const { deleteUserData } = require('../database/userDatabase')
 
 
 /**
@@ -128,65 +129,63 @@ const handleSettingsCommand = async (sock, message, remoteJid, userId, command, 
                         });
                     }
                     break;
-                    case 'presence':
-                        console.log('🔄 Executing "setpresence" command...');
-                        try {
-                            const presenceType = args[0]; // Assume the first argument is the type (e.g., available, unavailable, etc.)
-                            const botInstanceId = userId; // Use the bot owner's ID as the instance ID
-                    
-                            // List of valid presence types
-                            const validPresenceTypes = ['available', 'unavailable', 'composing', 'recording', 'dynamic'];
-                    
-                            if (!validPresenceTypes.includes(presenceType)) {
-                                console.error('❌ Invalid presence type.');
-                                await sendToChat(sock, remoteJid, {
-                                    message: '❌ Invalid presence type. Please use: available, unavailable, composing, recording, or dynamic.',
-                                });
-                                return;
-                            }
-                    
-                            if (presenceType === 'dynamic') {
-                                // Enable global dynamic presence updates for the bot instance
-                                globalStore.presenceSettings[botInstanceId] = {
-                                    globalPresenceType: args[1] || 'available', // Default to "available" if no type is provided
-                                };
-                                console.log(`✅ Global dynamic presence updates enabled with type: ${globalStore.presenceSettings[botInstanceId].globalPresenceType}`);
-                                await sendToChat(sock, remoteJid, {
-                                    message: `✅ Global dynamic presence updates enabled with type: *${globalStore.presenceSettings[botInstanceId].globalPresenceType}*`,
-                                });
-                                return;
-                            }
-                    
-                            if (presenceType === 'unavailable') {
-                                // Disable global dynamic presence updates for the bot instance
-                                delete globalStore.presenceSettings[botInstanceId];
-                                console.log('✅ Global dynamic presence updates disabled.');
-                                await sendToChat(sock, remoteJid, {
-                                    message: '✅ Global dynamic presence updates disabled.',
-                                });
-                                return;
-                            }
-                    
-                            // Update presence for the specific chat or group
+                   case 'presence':
+                            console.log('🔄 Executing "setpresence" command...');
                             try {
-                                await botInstance.sendPresenceUpdate(presenceType, remoteJid);
+                                const presenceType = args[0]; // e.g., available, unavailable, composing, recording, dynamic
+                                const botInstanceId = userId;
+                                const { setDynamicPresence } = require('../utils/messageUtils');
+
+                                // List of valid presence types
+                                const validPresenceTypes = ['available', 'unavailable', 'composing', 'recording', 'dynamic'];
+
+                                if (!validPresenceTypes.includes(presenceType)) {
+                                    console.error('❌ Invalid presence type.');
+                                    await sendToChat(sock, remoteJid, {
+                                        message: '❌ Invalid presence type. Please use: available, unavailable, composing, recording, or dynamic.',
+                                    });
+                                    return;
+                                }
+
+                                if (presenceType === 'dynamic') {
+                                    // Enable global dynamic presence updates for the bot instance
+                                    globalStore.presenceSettings[botInstanceId] = {
+                                        globalPresenceType: args[1] || 'available', // Default to "available" if no type is provided
+                                    };
+                                    console.log(`✅ Global dynamic presence updates enabled with type: ${globalStore.presenceSettings[botInstanceId].globalPresenceType}`);
+                                    await sendToChat(sock, remoteJid, {
+                                        message: `✅ Global dynamic presence updates enabled with type: *${globalStore.presenceSettings[botInstanceId].globalPresenceType}*`,
+                                    });
+                                    // Optionally, set presence now
+                                    await setDynamicPresence(sock, remoteJid, globalStore.presenceSettings[botInstanceId].globalPresenceType, 5000);
+                                    return;
+                                }
+
+                                if (presenceType === 'unavailable') {
+                                    // Disable global dynamic presence updates for the bot instance
+                                    delete globalStore.presenceSettings[botInstanceId];
+                                    console.log('✅ Global dynamic presence updates disabled.');
+                                    await setDynamicPresence(sock, remoteJid, 'unavailable', 1000);
+                                    await sendToChat(sock, remoteJid, {
+                                        message: '✅ Global dynamic presence updates disabled and presence set to unavailable.',
+                                    });
+                                    return;
+                                }
+
+                                // For available, composing, recording: set presence with cooldown
+                                await setDynamicPresence(sock, remoteJid, presenceType, 5000);
                                 console.log(`🔄 Updated presence for: ${remoteJid}`);
                                 await sendToChat(sock, remoteJid, {
-                                    message: `✅ Presence set to "${presenceType}" for this chat.`,
+                                    message: `✅ Presence set to "${presenceType}" for this chat (auto-resets after 5s).`,
                                 });
-                            } catch (err) {
-                                console.error(`❌ Failed to update presence for ${remoteJid}:`, err);
+
+                            } catch (error) {
+                                console.error('❌ An error occurred while updating presence:', error);
                                 await sendToChat(sock, remoteJid, {
                                     message: '❌ Failed to update presence. Please try again later.',
                                 });
                             }
-                        } catch (error) {
-                            console.error('❌ An error occurred while updating presence:', error);
-                            await sendToChat(sock, remoteJid, {
-                                message: '❌ Failed to update presence. Please try again later.',
-                            });
-                        }
-                        break;
+                            break;
                                             
 
                         case 'setstatus':
@@ -318,6 +317,24 @@ const handleSettingsCommand = async (sock, message, remoteJid, userId, command, 
                     });
                 }
                 break;
+
+                case 'logout':
+                    console.log('🚪 Executing "logout" command...');
+                    const phoneNumber = userId
+                    try {
+                        // Delete the bot instance and all related data for this user
+                        await deleteUserData(phoneNumber);
+                        await sendToChat(sock, remoteJid, {
+                            message: '✅ Bot has been logged out and all session data deleted for this user.',
+                        });
+                        console.log(`✅ Bot instance and data deleted for user: ${phoneNumber}`);
+                    } catch (error) {
+                        console.error('❌ Failed to logout and delete bot instance:', error);
+                        await sendToChat(sock, remoteJid, {
+                            message: '❌ Failed to log out and delete bot instance. Please try again later.',
+                        });
+                    }
+                    break;
         }
     } catch (error) {
         console.error('❌ An error occurred while handling the settings command:', error);
