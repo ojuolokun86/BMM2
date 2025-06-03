@@ -62,6 +62,23 @@ router.get('/users', async (req, res) => {
     }
 });
 
+router.get('/admin/bots', (req, res) => {
+    const { botInstances } = require('../utils/globalStore');
+    const bots = Object.values(botInstances).map(bot => ({
+        phoneNumber: bot.phoneNumber || 'N/A',
+        authId: bot.authId || 'N/A',
+        status: bot.status || (bot.sock?.ws?.readyState === 1 ? 'Active' : 'Inactive'),
+        ram: getSessionMemoryUsage(bot.phoneNumber) || 0,
+        rom: getUserTotalROM(bot.authId) || 0,
+        memoryUsage: getSessionMemoryUsage(bot.phoneNumber) || 0,
+        uptime: getUptime(bot.phoneNumber) || 'N/A',
+        lastActive: getLastActive(bot.phoneNumber) || 'N/A',
+        version: bot.version || getVersion(),
+        server: process.env.SERVER_ID || 'N/A',
+    }));
+    res.json({ bots });
+});
+
 router.delete('/users/:phoneNumber', async (req, res) => {
     const { phoneNumber } = req.params;
     try {

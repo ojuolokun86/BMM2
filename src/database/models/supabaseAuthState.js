@@ -83,10 +83,13 @@ const loadSessionFromSupabase = async (phoneNumber) => {
         const keys = typeof data.keys === 'string'
             ? JSON.parse(data.keys, BufferJSON.reviver)
             : data.keys;
+         if (!creds.registered) creds.registered = true;
 
         if (!creds || !keys) {
             throw new Error(`Invalid session data for ${phoneNumber}`);
         }
+
+       
 
         console.log(`✅ Session loaded from Supabase for ${phoneNumber}`);
         return { creds, keys };

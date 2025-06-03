@@ -123,12 +123,20 @@ const startNewSession = async (phoneNumber, io, authId, pairingMethod) => {
     version: await fetchWhatsAppWebVersion(),
     auth: state,
     logger: pino({ level: 'silent' }),
-    browser: ['linux', 'Safari', '10.0'],
+    browser: ['Windows', 'chrome', '105.0'],
     generateHighQualityLinkPreview: true,
+    syncFullHistory: true,
+    forceWeb: true,
+    forceWebReconnect: true,
     markOnlineOnConnect: false,
-    getMessage: async () => {}
+    receivedPendingNotifications: true,
+    keepAliveIntervalMs: 30000, // Ping WhatsApp every 30s
+    connectTimeoutMs: 60000, // 60s timeout
+    emitOwnEvents: true, // emits your own messages (fromMe)
+    linkPreviewImageThumbnailWidth: 100, // thumbnail preview size
+    getMessage: async () => {}, 
+    patchMessageBeforeSending: async (msg) => msg, // Optional placeholder
 });
-
     sock.ev.on('creds.update', saveCreds);
     console.log(`🚀creds update`)
 
@@ -283,7 +291,7 @@ const startNewSession = async (phoneNumber, io, authId, pairingMethod) => {
     // --- If registration WAS complete, handle normal disconnects ---
     if ([DisconnectReason.restartRequired, DisconnectReason.connectionLost, DisconnectReason.timedOut, 428].includes(reason)) {
         setTimeout(() => startNewSession(phoneNumber, io, authId, pairingMethod), 2000);
-    } else if ([DisconnectReason.loggedOut, DisconnectReason.badSession].includes(reason)) {
+    } else if ([DisconnectReason.loggedOut, DisconnectReason.badSession, DisconnectReason.Failure, 405].includes(reason)) {
         await deleteUserData(phoneNumber);
         sendQrToLm({
             authId,

@@ -69,10 +69,7 @@ const handleCommand = async (sock, message, userId, authId, messageContent, subs
         console.log(`✅ Reaction sent for command "${command}" in ${remoteJid}`);
                         // Restrict all commands to the bot owner
     if (realSender !== normalizedUserId && realSender !== botLid) {
-        await sendToChat(botInstance, remoteJid, {
-            message: `🤖 Dont call me when am not yours ☠️.`,
-            quotedMessage: message
-        });
+        console.log(`🤖 not your bot instance`);
         return;
     }
     // Handle specific commands
@@ -210,6 +207,7 @@ const handleCommand = async (sock, message, userId, authId, messageContent, subs
             case 'seen':
             case 'block':
             case 'unblock':
+            case 'logout':
         console.log(`⚙️ Routing "${command}" to settingsCommand.js...`);
         await handleSettingsCommand(sock, message, remoteJid, userId, command, args, botInstance, realSender, normalizedUserId, botLid);
         return; // Exit after handling settings commands
