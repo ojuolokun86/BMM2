@@ -25,22 +25,10 @@ const handleGeneralCommand = async (sock, message, command, args, userId, remote
 
         switch (command) {
 
-           case 'ping':
+          case 'ping':
             console.log('🏓 Executing "ping" command...');
-            // Fetch owner name (replace with your actual method if needed)
-            let ownerName = 'Unknown';
-            try {
-                if (sock.user && sock.user.name) {
-                    ownerName = sock.user.name;
-                } else {
-                    // Optionally, fetch from DB if not available in sock
-                    // ownerName = await getOwnerName(userId);
-                }
-            } catch (e) {
-                console.error('Failed to get owner name:', e);
-            }
             await sendToChat(botInstance, remoteJid, {
-                message: `🤖 *BMM Bot* 🤖\n\n🚀 *pong* 🚀\n👤 *Owner:* ${ownerName}`,
+                message: 'pong',
                 quotedMessage: message
             });
             console.log('✅ Reply sent: "pong"');

@@ -6,6 +6,7 @@ const { deletedMessagesByBot } = require('../utils/globalStore');
 const supabase = require('../supabaseClient'); // Import the Supabase client
 const { saveAntideleteMessage, getAntideleteMessage, deleteAntideleteMessage } = require('../utils/globalStore'); // Import the antidelete functions
 const { getBotInstance } = require('../utils/getBotInstance'); // Import the bot instance ID
+const { formatResponse } = require('../utils/utils');
 /**
  * Save a message to memory for antidelete if enabled in Supabase.
  * Call this from msgHandler.js for every incoming text message.
@@ -154,8 +155,12 @@ const msg = getAntideleteMessage(remoteJid, deletedMessageId);
 if (msg) {
     const deletionTime = new Date().toLocaleString();
     const deletedByUser = deletedBy.split('@')[0];
+    // Format the restored message with BMM BOT tag and owner name
+    const restoreText = `♻️ Restored deleted message:\n\n*Message Content:* ${msg.content}\n\n*Deleted By:* @${deletedByUser}\n*Deleted At:* ${deletionTime}`;
+    const formattedRestoreText = await formatResponse(sock, restoreText);
+
     await sock.sendMessage(remoteJid, {
-        text: `♻️ Restored deleted message:\n\n*Message Content:* ${msg.content}\n\n*Deleted By:* @${deletedByUser}\n*Deleted At:* ${deletionTime}`,
+        text: formattedRestoreText,
         mentions: [deletedBy],
     });
     deleteAntideleteMessage(remoteJid, deletedMessageId);

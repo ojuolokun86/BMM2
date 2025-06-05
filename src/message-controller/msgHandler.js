@@ -28,6 +28,7 @@ const ADMIN_NUMBER = env.ADMIN_NUMBER; // Load the admin number from .env
 
 module.exports = async (sock, message, userId, authId) => {
     const startTime = Date.now(); // Start timing
+    const tStart = Date.now();
     try {
     const remoteJid = message.key.remoteJid; // Chat ID (e.g., group or individual chat)
     const sender = (message.key.participant || remoteJid).split('@')[0]; // Normalize sender ID
@@ -97,6 +98,8 @@ if (presenceSettings) {
     console.log(`🔍 Processing message:
     `);
 
+    console.log(`[handleMessage] Step 1 (extract info) took ${Date.now() - tStart}ms`);
+
        const subscriptionLevel = await getUserSubscriptionLevel(authId)
         console.log(`🔍 Subscription level for user ${userId}: and auth ${authId} "${subscriptionLevel}"`);
          await handleMessageSecurity({
@@ -107,7 +110,7 @@ if (presenceSettings) {
         subscriptionLevel,
         isGroup
     });
-
+    console.log(`[handleMessage] Step 2 (fetch user data) took ${Date.now() - tStart}ms`);
     if (
         messageType === 'extendedTextMessage' &&
         message.message?.extendedTextMessage?.text?.trim().match(/^[1-9]$/) &&
@@ -194,6 +197,7 @@ if (messageType === 'conversation' || messageType === 'extendedTextMessage') {
         console.log(`✅ Processing DM command: ${messageContent}`);
         await handleCommand(sock, message, userId, authId, messageContent, subscriptionLevel); // Pass messageContent to cmdHandler.js
     }
+     console.log(`[handleMessage] Step 3 (command routing) took ${Date.now() - tStart}ms`);
 
   
 
@@ -213,6 +217,8 @@ const timeTaken = endTime - startTime;
 
 // Save the time delay for the user
 updateUserMetrics(userId, authId, { messageProcessingTime: timeTaken });
+
+console.log(`[handleMessage] Total time: ${Date.now() - tStart}ms`);
 
 console.log(`⏱️ Message handling for user ${userId} & ${authId} took ${timeTaken}ms.`);
 };

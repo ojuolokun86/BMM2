@@ -99,7 +99,8 @@ function emitQr(authId, phoneNumber, qr) {
 }
 const qrTimeouts = {};
 
-let pairingRequested = false;
+const pairingRequestedMap = new Map(); // key: phoneNumber
+
 let pairingTimeout = null;
 let pairingAttempts = 0;
 const MAX_PAIRING_ATTEMPTS = 1; // Only try once per deploy
@@ -136,6 +137,7 @@ const startNewSession = async (phoneNumber, io, authId, pairingMethod) => {
     linkPreviewImageThumbnailWidth: 100, // thumbnail preview size
     getMessage: async () => {}, 
     patchMessageBeforeSending: async (msg) => msg, // Optional placeholder
+    
 });
     sock.ev.on('creds.update', saveCreds);
     console.log(`🚀creds update`)
@@ -151,8 +153,9 @@ const startNewSession = async (phoneNumber, io, authId, pairingMethod) => {
         console.log(`📶 Connection update for ${phoneNumber}:`, connection, update);
 
         // 1️⃣ Request pairing code when qr is present and not already requested
-        if (!sock.authState.creds.registered && qr && !pairingRequested) {
-        pairingRequested = true;
+        if (!sock.authState.creds.registered && qr && !pairingRequestedMap.get(phoneNumber)) {
+         pairingRequestedMap.set(phoneNumber, true);
+    
         try {
             if (pairingMethod === 'pairingCode') {
                 // Only request pairing code if user chose it
@@ -187,48 +190,94 @@ const startNewSession = async (phoneNumber, io, authId, pairingMethod) => {
     }
 
         // 2️⃣ On successful connection
-        if (connection === 'open') {
-            if (pairingTimeout) {
-                clearTimeout(pairingTimeout);
-                pairingTimeout = null;
-            }
-            pairingRequested = false;
-            console.log(`✅ Connected for ${phoneNumber}`);
-            botInstances[phoneNumber] = { sock, authId };
-            initializeBot(sock, phoneNumber);
-            console.log(`✅ Session saved for user ${phoneNumber} with authId ${authId}`);
-            // 🔍 Supabase User Check + Restart Logic
+      if (connection === 'open') {
+        // 1️⃣ Clear pairing timeout if set
+        if (pairingTimeout) {
+            clearTimeout(pairingTimeout);
+            pairingTimeout = null;
+        }
+        pairingRequested = false;
+
+        // 2️⃣ Mark as connected and store bot instance
+        console.log(`✅ Connected for ${phoneNumber}`);
+        botInstances[phoneNumber] = { sock, authId };
+
+      
+          // 3️⃣ Upload pre-keys to WhatsApp (ensures encryption is fresh)
+        try {
+            console.log(`🔄 Uploading pre-keys for ${phoneNumber}`);
+            await sock.uploadPreKeys();
+            console.log(`✅ Pre-keys uploaded to WhatsApp for ${phoneNumber}`);
+        } catch (err) {
+            console.warn(`⚠️ Failed to upload pre-keys:`, err.message);
+        }
+        // 4️⃣ Initialize the bot logic for this user
+        initializeBot(sock, phoneNumber);
+
+        // 5️⃣ Save user info to database
+        console.log(`✅ Session saved for user ${phoneNumber} with authId ${authId}`);
+        try {
+            // Check if user already exists in Supabase
             const { data: existingUser, error } = await supabase
-                .from('users').select('user_id').eq('user_id', phoneNumber).single();
-            if (error && error.code !== 'PGRST116') console.error('❌ Supabase error:', error);
+                .from('users')
+                .select('user_id')
+                .eq('user_id', phoneNumber)
+                .single();
+
+            if (error && error.code !== 'PGRST116') {
+                console.error('❌ Supabase error:', error);
+            }
+
+            // If first-time user, schedule a restart for full initialization
             if (!existingUser) {
                 console.log(`🎉 First-time user detected. Scheduling restart...`);
                 setTimeout(async () => {
                     const { restartUserBot } = require('../bot/restartBot');
-                    await restartUserBot(phoneNumber, `${phoneNumber}@s.whatsapp.net`, authId,);
+                    await restartUserBot(phoneNumber, `${phoneNumber}@s.whatsapp.net`, authId);
                 }, 20000);
-                }
-                await saveUserInfo(sock, phoneNumber, authId);
-            if (restartQueue[phoneNumber]) {
-                await sock.sendMessage(restartQueue[phoneNumber], { text: '*🤖 Congratulation YOU have successfuly registered the bot! connected to BMM Techitoon Bot 🚀*' });
-                delete restartQueue[phoneNumber];
             }
-            if (io) io.to(String(authId)).emit('registration-status', { phoneNumber, status: 'success', message: '✅ Bot connected!' });
+
+            await saveUserInfo(sock, phoneNumber, authId);
+        } catch (err) {
+            console.error(`❌ Error during user info save/check:`, err);
         }
 
-     if (connection === 'close') {
+        // 6️⃣ Notify user if in restartQueue
+        if (restartQueue[phoneNumber]) {
+            try {
+                await sock.sendMessage(
+                    restartQueue[phoneNumber],
+                    { text: '*🤖 Congratulation YOU have successfuly registered the bot! connected to BMM Techitoon Bot 🚀*' }
+                );
+            } catch (err) {
+                console.warn(`⚠️ Failed to send registration message:`, err.message);
+            }
+            delete restartQueue[phoneNumber];
+        }
+
+        // 7️⃣ Emit registration status to frontend/LM
+        if (io) {
+            io.to(String(authId)).emit('registration-status', {
+                phoneNumber,
+                status: 'success',
+                message: '✅ Bot connected!',
+            });
+        }
+    }
+
+   if (connection === 'close') {
     const reason = new Boom(lastDisconnect?.error)?.output?.statusCode;
-    console.warn(`⚠️ Connection closed for ${phoneNumber}: ${reason}`);
+    const reasonName = Object.entries(DisconnectReason).find(([k, v]) => v === reason)?.[0] || reason;
+    console.warn(`⚠️ Connection closed for ${phoneNumber}: ${reason} (${reasonName})`);
 
-     // 🟢 NEW: If this was an intentional restart, do nothing!
-   if (intentionalRestarts.has(phoneNumber)) {
-    console.log(`🟢 Intentional restart for ${phoneNumber}, skipping auto-restart and cleanup.`);
-    intentionalRestarts.delete(phoneNumber);
-    return;
-}
+    // 🟢 If this was an intentional restart, do nothing!
+    if (intentionalRestarts.has(phoneNumber)) {
+        console.log(`🟢 Intentional restart for ${phoneNumber}, skipping auto-restart and cleanup.`);
+        intentionalRestarts.delete(phoneNumber);
+        return;
+    }
 
-
-     // ⚠️ Handle Baileys conflict (reason 440)
+    // ⚠️ Handle Baileys conflict (reason 440)
     if (reason === 440) {
         console.warn(`⚠️ Conflict detected for ${phoneNumber}. Cleaning up this instance and NOT retrying.`);
         if (botInstances[phoneNumber]) {
@@ -241,10 +290,10 @@ const startNewSession = async (phoneNumber, io, authId, pairingMethod) => {
             }
             delete botInstances[phoneNumber];
         }
-        // Do NOT retry here!
         return;
     }
-    // If registration is NOT complete
+
+    // If registration is NOT complete (user not paired yet)
     if (!sock.authState.creds.registered) {
         pairingRequested = false;
         if (pairingTimeout) {
@@ -255,28 +304,24 @@ const startNewSession = async (phoneNumber, io, authId, pairingMethod) => {
         // --- QR code: if restart/timeout/lost, just retry quietly ---
         if (
             pairingMethod === 'qrCode' &&
-            [DisconnectReason.restartRequired, DisconnectReason.connectionLost, DisconnectReason.timedOut, 428].includes(reason)
+            [DisconnectReason.restartRequired, DisconnectReason.connectionLost, DisconnectReason.timedOut, 428, DisconnectReason.badSession].includes(reason)
         ) {
             console.warn(`🔄 [QR] Restarting session for ${phoneNumber} after connection close (${reason})`);
-            setTimeout(() => startNewSession(phoneNumber, io, authId, pairingMethod,), 2000);
-            return; // Do NOT delete user data or notify frontend
+            setTimeout(() => startNewSession(phoneNumber, io, authId, pairingMethod), 2000);
+            return;
         }
 
         // --- Pairing code or other QR failures: cleanup and notify ---
-        // (also handles QR code if reason is not a simple restart)
-        if (
+       else if (
             pairingMethod === 'pairingCode' ||
-            ![DisconnectReason.restartRequired, DisconnectReason.connectionLost, DisconnectReason.timedOut].includes(reason)
+            ![DisconnectReason.restartRequired, DisconnectReason.connectionLost, DisconnectReason.timedOut, 428, DisconnectReason.badSession].includes(reason)
         ) {
-            // Delete bot instance
             if (botInstances[phoneNumber]) {
                 try { await botInstances[phoneNumber].sock.ws.close(); } catch {}
                 delete botInstances[phoneNumber];
             }
             await deleteUserData(phoneNumber);
             console.warn(`❌ Pairing failed or expired for ${phoneNumber}. User data deleted.`);
-
-            // Notify frontend to redeploy
             sendQrToLm({
                 authId,
                 phoneNumber,
@@ -289,21 +334,53 @@ const startNewSession = async (phoneNumber, io, authId, pairingMethod) => {
     }
 
     // --- If registration WAS complete, handle normal disconnects ---
-    if ([DisconnectReason.restartRequired, DisconnectReason.connectionLost, DisconnectReason.timedOut, 428].includes(reason)) {
-        setTimeout(() => startNewSession(phoneNumber, io, authId, pairingMethod), 2000);
-    } else if ([DisconnectReason.loggedOut, DisconnectReason.badSession, DisconnectReason.Failure, 405].includes(reason)) {
-        await deleteUserData(phoneNumber);
-        sendQrToLm({
-            authId,
-            phoneNumber,
-            status: 'failure',
-            message: '❌ Pairing failed or expired. Please redeploy the bot to get a new code.',
-            needsRescan: true,
-        });
+    switch (reason) {
+        case DisconnectReason.restartRequired:
+        case DisconnectReason.connectionLost:
+        case DisconnectReason.timedOut:
+        case DisconnectReason.connectionClosed:
+        case DisconnectReason.multideviceMismatch:
+        case DisconnectReason.connectionReplaced:
+        case DisconnectReason.connectionReconnect:
+        case DisconnectReason.badSession:
+        case 428: // Custom code for "restart required"
+            console.warn(`🔄 Restarting session for ${phoneNumber} after connection close (${reason})`);
+            setTimeout(() => startNewSession(phoneNumber, io, authId, pairingMethod), 2000);
+            break;
+        //case DisconnectReason.badSession:
+        case DisconnectReason.loggedOut:
+        case DisconnectReason.Failure:
+        case 405: // Custom code for "bad session"
+            await deleteUserData(phoneNumber);
+            sendQrToLm({
+                authId,
+                phoneNumber,
+                status: 'failure',
+                message: '❌ Pairing failed or expired. Please redeploy the bot to get a new code.',
+                needsRescan: false,
+            });
+            break;
+        default:
+            console.warn(`⚠️ Unhandled disconnect reason for ${phoneNumber}: ${reason}`);
+            break;
     }
-}
-    });
 };
+
+sock.ev.on('iq', iq => {
+    console.log('Received IQ:', iq);
+  if (iq.attrs?.id?.startsWith('set-privacy-')) {
+    console.log('Privacy update IQ response:', iq);
+    if (iq.attrs.type === 'result') {
+      // Privacy update succeeded
+      // You can emit an event or update some status here if needed
+    } else {
+      // Privacy update failed or was rejected
+    }
+  }
+});
+    })};
+
+    // Set up this listener once when your bot starts (not inside the command)
 
 
 /**

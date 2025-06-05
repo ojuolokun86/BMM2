@@ -1,4 +1,5 @@
 const { getEmojiForCommand } = require('./emojiReaction');
+const { formatResponse } = require('./utils');
 const presenceTimers = {};
 
 /**
@@ -33,6 +34,15 @@ const sendToChat = async (botInstance, chatId, options = {}) => {
             console.warn(`⚠️ Failed to update presence for ${chatId}:`, err.message);
         }
 
+        //  if (!isGroup) {
+        //     try {
+        //         await sock.assertSessions([remoteJid]);
+        //     } catch (err) {
+        //         console.warn(`⚠️ Failed to assert session for ${remoteJid}:`, err.message);
+        //     }
+        // }
+// For groups, skip or handle session assertion differently
+
         // 📷 Media message
         if (media) {
             const resolvedType = mediaType || 'image';
@@ -48,20 +58,23 @@ const sendToChat = async (botInstance, chatId, options = {}) => {
                 ...(quotedMessage ? { quoted: quotedMessage } : {})
             };
 
+
             await botInstance.sendMessage(chatId, mediaPayload);
             console.log(`✅ Sent ${resolvedType} to ${chatId} with caption: ${caption}`);
         }
 
         // 💬 Text message
         if (message && typeof message === 'string') {
+             const formattedMessage = await formatResponse(botInstance, message);
+
             const textPayload = {
-                text: message,
+                text: formattedMessage,
                 mentions,
                 ...(quotedMessage ? { quoted: quotedMessage } : {})
             };
 
             await botInstance.sendMessage(chatId, textPayload);
-            console.log(`✅ Sent message to ${chatId}: ${message}`);
+            console.log(`✅ Sent message to ${chatId}: ${formattedMessage}`);
         }
 
         // 👋 Mark bot as done (optional)
@@ -103,6 +116,13 @@ const sendReaction = async (botInstance, chatId, messageId, command) => {
     try {
         const emoji = getEmojiForCommand(command);
         console.log(`🔍 Reaction emoji for "${command}": ${emoji}`);
+
+        //   try {
+        //     await botInstance.assertSessions([chatId]);
+        // } catch (err) {
+        //     console.warn(`❌ Session not ready for ${chatId} (reaction):`, err.message);
+        //     return;
+        // }
 
         await botInstance.sendMessage(chatId, {
             react: {
