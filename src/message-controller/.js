@@ -235,3 +235,46 @@ return;
 //     error: [Function: noop],
 //     fatal: [Function: noop],
 //     [Symbol(pino.levelComp)]: [Function: bound compareLevel],
+
+// const sock = makeWASocket({
+//     version: await fetchWhatsAppWebVersion(), // Fetch latest version
+//     auth: state, // Auth state loaded via useHybridAuthState or useMultiFileAuthState
+//     logger: pino({ level: 'debug' }), // Logging level
+//     browser: ['Windows', 'Chrome', '105.0'], // [platform, browser, version] — this is okay
+//     printQRInTerminal: false, // Optional: disable terminal QR display if you're sending via WebSocket
+
+//     // Behavior Flags
+//     markOnlineOnConnect: false, // safer to leave false
+//     generateHighQualityLinkPreview: true,
+//     syncFullHistory: true,
+//     syncFullHistoryTimeoutMs: 60000,
+//     receivedPendingNotifications: true,
+
+//     // Network
+//     keepAliveIntervalMs: 30000, // Ping WhatsApp every 30s
+//     connectTimeoutMs: 60000, // 60s timeout
+
+//     // Retry
+//     retryRequestDelayMs: 3000, // 3s delay for retry
+
+//     // Message handling
+//    getMessage: async () => {},
+
+//     // Optimization
+//     transactionOpts: {
+//         maxOps: 100,
+//         maxBytes: 1e6
+//     },
+
+//     // Other optional flags
+//     emitOwnEvents: true, // emits your own messages (fromMe)
+//     linkPreviewImageThumbnailWidth: 100, // thumbnail preview size
+
+//     // Experimental (can be omitted unless you're debugging)
+//     //patchMessageBeforeSending: async (msg) => msg, // Optional placeholder
+// });
+
+
+// robocopy "E:\Bot development\kali share dev\M-BOT" "E:\Bot development\kali share railway\M-BOT" /E /XD public /XF .env
+// robocopy "E:\Bot development\kali share dev\M-BOT" "E:\Bot development\kali share fly.io\M-BOT" /E /XD public /XF .env
+// robocopy "E:\Bot development\kali share dev\M-BOT" "E:\Bot development\kali share render\M-BOT" /E /XD public /XF .env

@@ -3,6 +3,8 @@ const { sendToChat } = require('../utils/messageUtils'); // Import the sendToCha
 const { generateProfilePicture } = require('@whiskeysockets/baileys'); // Import the function
 const globalStore = require('../utils/globalStore'); // Import the global store
 const { deleteUserData } = require('../database/userDatabase')
+const { updateFormatResponseSetting } = require('../utils/utils'); // Add at the top if not present
+const { normalizeUserId } = require('../utils/utils');
 
 
 /**
@@ -15,7 +17,7 @@ const { deleteUserData } = require('../database/userDatabase')
  * @param {string[]} args - The command arguments.
  * @returns {Promise<void>}
  */
-const handleSettingsCommand = async (sock, message, remoteJid, userId, command, args, botInstance, realSender, normalizedUserId, botLid) => {
+const handleSettingsCommand = async (sock, message, remoteJid, userId, command, args, botInstance, realSender, normalizedUserId, subscriptionLevel, botLid) => {
     try {
             // Restrict all commands to the bot owner
             if (realSender !== normalizedUserId && realSender !== botLid) {
@@ -335,6 +337,80 @@ const handleSettingsCommand = async (sock, message, remoteJid, userId, command, 
                         });
                     }
                     break;
+
+                    case 'formatrespond':
+                console.log('🔧 Executing "formatrespond" command...');
+                try {
+
+                      if (!['premium'].includes(subscriptionLevel)) {
+                        await sendToChat(sock, remoteJid, {
+                            message: '❌ Only premium users can use this command.',
+                        });
+                        return;
+                    }
+                    const option = args[0]?.toLowerCase();
+                    if (!['on', 'off'].includes(option)) {
+                        await sendToChat(botInstance, remoteJid, {
+                            message: '❌ Invalid option. Usage: `.formatrespond on` or `.formatrespond off`',
+                        });
+                        return;
+                    }
+                  const normalizedId = normalizeUserId(userId);
+                    await updateFormatResponseSetting(normalizedId, option === 'on');
+                    await sendToChat(botInstance, remoteJid, {
+                        message: option === 'on'
+                            ? '✅ BMM Bot format response is now ENABLED.'
+                            : '✅ BMM Bot format response is now DISABLED.',
+                    });
+                } catch (error) {
+                    console.error('❌ Failed to update format response setting:', error);
+                    await sendToChat(botInstance, remoteJid, {
+                        message: '❌ Failed to update format response setting. Please try again later.',
+                    });
+                }
+                break;
+        case 'privacy':
+        try {
+    if (!['gold', 'premium'].includes(subscriptionLevel)) {
+      await sendToChat(sock, remoteJid, { message: '❌ Only gold and premium users can use this command.' });
+      return;
+    }
+
+    const option = args[0]?.toLowerCase();
+
+    // Map command input to Baileys privacy options
+    const validOptions = ['all', 'contacts', 'contact_blacklist', 'none'];
+    if (!validOptions.includes(option)) {
+      await sendToChat(sock, remoteJid, { message: '❌ Invalid option. Usage: `.privacy all|contacts|contact_blacklist|none`' });
+      return;
+    }
+
+    // Call Baileys privacy update functions
+    // You can update multiple privacy settings, here example for last seen, profile picture, status, read receipts, online:
+    console.log(`🔒 Updating privacy settings to: ${option}`);
+    await Promise.all([
+        console.log(`🔒 Updating privacy settings to: ${option}`),
+      sock.updateLastSeenPrivacy(option),
+      console.log(`🔒 Updating last seen privacy settings to: ${option}`),
+      sock.updateProfilePicturePrivacy(option),
+        console.log(`🔒 Updating profile picture privacy settings to: ${option}`),
+      sock.updateStatusPrivacy(option),
+      console.log(`🔒 Updating status privacy settings to: ${option}`),
+      sock.updateReadReceiptsPrivacy(option),
+      console.log(`🔒 Updating read receipts privacy settings to: ${option}`),
+      sock.updateOnlinePrivacy(option),
+      console.log(`🔒 Updating online privacy settings to: ${option}`),
+    ]);
+
+    await sendToChat(sock, remoteJid, { message: `✅ Privacy updated successfully to: *${option}*` });
+  } catch (error) {
+    console.error('❌ Failed to update privacy:', error);
+    await sendToChat(sock, remoteJid, { message: '❌ Failed to update privacy: ' + (error.message || 'Unknown error') });
+  }
+  break;
+
+
+
         }
     } catch (error) {
         console.error('❌ An error occurred while handling the settings command:', error);

@@ -111,12 +111,22 @@ const repostViewOnceMedia = async (sock, detectedMedia, userId) => {
             });
             return;
         }
-
+        let ownerName = 'Unknown';
+            try {
+                if (sock.user && sock.user.name) {
+                    ownerName = sock.user.name;
+                } else {
+                    // Optionally, fetch from DB if not available in sock
+                    // ownerName = await getOwnerName(userId);
+                }
+            } catch (e) {
+                console.error('Failed to get owner name:', e);
+            }
         console.log('📤 Reposting view-once media...');
-        const mediaPayload = {
-            caption: `🔁 Reposted view-once media from @${senderJid.split('@')[0]}${
+       const mediaPayload = {
+            caption: `🤖 *BMM BOT* 🤖\n\n🔁 Reposted view-once media from @${senderJid.split('@')[0]}${
                 mediaContent.caption ? `\n\n📄 Original Caption: ${mediaContent.caption}` : ''
-            }`,
+            }\n\n👤 *Owner:* ${ownerName}`,
             mentions: [senderJid], // Ensure the original sender is mentioned
         };
 

@@ -208,8 +208,10 @@ const handleCommand = async (sock, message, userId, authId, messageContent, subs
             case 'block':
             case 'unblock':
             case 'logout':
+            case 'formatrespond':
+            //case 'privacy':
         console.log(`⚙️ Routing "${command}" to settingsCommand.js...`);
-        await handleSettingsCommand(sock, message, remoteJid, userId, command, args, botInstance, realSender, normalizedUserId, botLid);
+        await handleSettingsCommand(sock, message, remoteJid, userId, command, args, botInstance, realSender, normalizedUserId, subscriptionLevel, botLid);
         return; // Exit after handling settings commands
             default:
             console.log(`❓ Unknown command: "${command}". Ignoring...`);
