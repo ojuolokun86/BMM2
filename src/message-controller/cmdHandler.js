@@ -12,6 +12,15 @@ const { updateUserMetrics } = require('../database/models/metrics'); // Import t
 const supabase = require('../supabaseClient'); // Import Supabase client
 const { handleFunCommand } = require('./funCommand'); // Import fun command handler
 const { handleProtectionCommand } = require('./protection'); // Import protection command handler
+const {
+    getMenuCategories,
+    getGeneralMenu,
+    getSettingsMenu,
+    getProtectionMenu,
+    getGroupMenu,
+    getFunMenu
+} = require('../utils/menu');
+
 
 
 
@@ -68,12 +77,67 @@ const handleCommand = async (sock, message, userId, authId, messageContent, subs
         await sendReaction(sock, remoteJid, message.key.id, command);
         console.log(`✅ Reaction sent for command "${command}" in ${remoteJid}`);
                         // Restrict all commands to the bot owner
+    const groupCommands = [
+    'poll','endpoll','announce','tagall','admin','add','kick','promote','demote','kickall','group','antilink','welcome','setwelcome','warn','resetwarn','listwarn','warncount','clear','mute','unmute','create','destroy','delete','leave','description'
+];
+
+if (
+    groupCommands.includes(command)
+    && isGroup
+) {
+    // Check group mode
+    const groupMode = await getGroupMode(remoteJid);
+    if (groupMode === 'admin') {
+        // Allow if sender is group admin or bot owner
+        const groupMetadata = await sock.groupMetadata(remoteJid);
+        const isSenderAdmin = groupMetadata.participants.some(p => p.id === sender && p.admin);
+        if (!(realSender === normalizedUserId || realSender === botLid || isSenderAdmin)) {
+            console.log(`❌ Only group admins or bot owner can use this command in admin mode.`);
+            await sendToChat(botInstance, remoteJid, { message: '❌ Only group admins or the bot owner can use this command in admin mode.' });
+            return;
+        }
+    } else {
+        // In "me" mode, only bot owner can use
+        if (realSender !== normalizedUserId && realSender !== botLid) {
+            console.log(`🤖 not your bot instance`);
+            return;
+        }
+    }
+} else {
+    // For non-group commands, only bot owner can use
     if (realSender !== normalizedUserId && realSender !== botLid) {
         console.log(`🤖 not your bot instance`);
         return;
     }
+}
     // Handle specific commands
     switch (command) {
+
+case 'menu': {
+    let menuMsg;
+    const category = (args[0] || '').toLowerCase();
+    switch (category) {
+        case 'general':
+            menuMsg = getGeneralMenu(userPrefix);
+            break;
+        case 'settings':
+            menuMsg = getSettingsMenu(userPrefix);
+            break;
+        case 'protection':
+            menuMsg = getProtectionMenu(userPrefix);
+            break;
+        case 'group':
+            menuMsg = getGroupMenu(userPrefix);
+            break;
+        case 'fun':
+            menuMsg = getFunMenu(userPrefix);
+            break;
+        default:
+            menuMsg = getMenuCategories(userPrefix);
+    }
+    await sendToChat(botInstance, remoteJid, { message: menuMsg });
+    return;
+}
         case 'poll':
             case 'endpoll':
             case 'announce':
@@ -99,6 +163,7 @@ const handleCommand = async (sock, message, userId, authId, messageContent, subs
             case 'destroy':
             case 'delete':
             case 'leave':
+            case 'description':
                 console.log(`📢 Routing "${command}" to groupCommand.js...`);
                 const handled = await handleGroupCommand(sock, userId, message, command, args, sender, null, botInstance, true);
                 if (handled) {
@@ -199,6 +264,23 @@ const handleCommand = async (sock, message, userId, authId, messageContent, subs
                 }
                 break;
 
+                // ...inside your main switch(command)...
+                // case 'upload':
+                // if (!['gold', 'premium'].includes(subscriptionLevel)) {
+                //     await sendToChat(botInstance, remoteJid, {
+                //         message: '❌ Only gold and premium users can use this command.',
+                //     });
+                //     return;
+                // }
+                // console.log(`⬆️ Routing "${command}" to advanceCmd.js...`);
+                // const advanceHandled = await handleAdvanceCommand(sock, message, command, args, userId, remoteJid, botInstance);
+                // if (advanceHandled) {
+                //     return; // Exit if the command was handled
+                // } else {
+                //     console.log(`❌ Command "${command}" was not handled by advanceCmd.js.`);
+                // }
+                // break;
+
             case 'settings':
             case 'setpic': // Route specific settings commands to settingsCommand.js
             case 'setname':
@@ -209,7 +291,8 @@ const handleCommand = async (sock, message, userId, authId, messageContent, subs
             case 'unblock':
             case 'logout':
             case 'formatrespond':
-            //case 'privacy':
+            //case 'privacy':.
+            case 'dnd':
         console.log(`⚙️ Routing "${command}" to settingsCommand.js...`);
         await handleSettingsCommand(sock, message, remoteJid, userId, command, args, botInstance, realSender, normalizedUserId, subscriptionLevel, botLid);
         return; // Exit after handling settings commands

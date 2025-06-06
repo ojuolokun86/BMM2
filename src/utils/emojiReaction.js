@@ -33,6 +33,10 @@ const commandEmojis = {
     kickall: '🚪',
     announce: '📢',
     leave: '🚪',
+    logout: '🤖',
+    formatrespond: '🗣️',
+    dnd: '📞',
+    upload: '📤',
 
     // Utility Commands
     delete: '🗑️',

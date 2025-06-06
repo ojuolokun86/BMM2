@@ -20,6 +20,12 @@ const fetchGroupMetadata = async (sock, groupId) => {
     }
 };
 
+async function getGroupOwner(sock, groupId) {
+    const metadata = await sock.groupMetadata(groupId);
+    // WhatsApp group owner is usually in the 'owner' field, fallback to first superadmin/admin
+    return metadata.owner || (metadata.participants.find(p => p.admin === 'superadmin')?.id) || (metadata.participants.find(p => p.admin)?.id) || 'Unknown';
+}
+
 /**
  * Get all participants in a group.
  * @param {object} sock - The WhatsApp socket instance.
@@ -115,4 +121,5 @@ module.exports = {
     getGroupAdmins,
     getGroupName,
     getBotOwnerName,
+    getGroupOwner,
 };

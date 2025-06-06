@@ -14,6 +14,8 @@ const { botInstances } = require('../utils/globalStore');
 const { handleTagAllCommand } = require('./tagall'); // Import the tagall command handler
 const { startAnnouncement, stopAnnouncement } = require('./groupAnnouncement'); // Import the announcement functions
 const { startPoll, sendPollMessage, endPoll } = require('./poll'); // make sure path is correct
+const { getGroupInfoMsg, getAntiLinkStatusMsg, getWarningListMsg, } = require('./text');
+const { getGroupOwner } = require('../utils/groupData');
 
 
 const { 
@@ -535,29 +537,17 @@ const handleGroupCommand = async (sock, userId, message, command, args, sender, 
                                     console.log('🔍 Executing "listwarn" command...');
                                     try {
                                         const warnings = await getAllWarningsForGroup(remoteJid, botInstance.user.id);
-                                
-                                        if (warnings.length === 0) {
-                                            await sendToChat(botInstance, remoteJid, { message: 'ℹ️ No warnings found for this group.' });
-                                            return true;
-                                        }
-                                
-                                        const warningList = warnings
-                                            .map((warning, index) => {
-                                                const user = `@${warning.user_id.split('@')[0]}`;
-                                                return `${index + 1}. ${user} - ${warning.warning_count} warnings (${warning.reason || 'No reason provided'})`;
-                                            })
-                                            .join('\n');
-                                
-                                        await sendToChat(botInstance, remoteJid, {
-                                            message: `*⚠️ Warning List for Group:*\n\n${warningList}`,
-                                            mentions: warnings.map((warning) => warning.user_id),
-                                        });
+
+                                        const groupName = await getGroupName(sock, remoteJid);
+                                        const groupAdmin = await getGroupOwner(sock, remoteJid); // Should return JID of owner/admin
+                                        const { text, mentions } = getWarningListMsg(warnings, { groupName, groupAdmin, groupId: remoteJid });
+                                        await sendToChat(botInstance, remoteJid, { message: text, mentions });
                                     } catch (error) {
                                         console.error('❌ Failed to fetch warnings:', error);
                                         await sendToChat(botInstance, remoteJid, { message: '❌ Failed to fetch warnings. Please try again later.' });
                                     }
                                     return true;
-                                
+                                                                
                                 case 'warncount':
                                     console.log('🔄 Executing "warncount" command...');
                                     try {
@@ -627,22 +617,53 @@ const handleGroupCommand = async (sock, userId, message, command, args, sender, 
                                                 await sendToChat(botInstance, remoteJid, { message: '❌ This command can only be used in groups.' });
                                                 return true; // Command handled
                                             }
-                                        
-                                            // Ensure the bot is an admin
-                                            if (!botIsAdmin) {
-                                                console.log('❌ Command "group" denied: The bot is not an admin in this group.');
-                                                await sendToChat(botInstance, remoteJid, { message: '❌ The bot must be an admin to execute this command.' });
-                                                return true;
-                                            }
+
                                         
                                             // Subcommands for `.group`
                                             const subCommand = args[0]?.toLowerCase();
                                             const subCommandArgs = args.slice(1).join(' ');
                                         
                                             switch (subCommand) {
+
                                                 case 'info':
-                                                    console.log('ℹ️ Executing "group info" subcommand...');
+                                                        console.log('ℹ️ Executing "group info" command...');
+                                                        try {
+                                                            const groupMetadata = await sock.groupMetadata(remoteJid);
+                                                            const groupName = groupMetadata.subject;
+                                                            const groupDesc = groupMetadata.desc || 'No description set.';
+                                                            const memberCount = groupMetadata.participants.length;
+                                                            const admins = groupMetadata.participants.filter(p => p.admin);
+                                                            const adminCount = admins.length;
+                                                            const owner = groupMetadata.owner || admins.find(a => a.admin === 'superadmin')?.id || 'Unknown';
+
+                                                            let adminList = admins.map(a => `• @${a.id.split('@')[0]}`).join('\n');
+                                                            if (!adminList) adminList = 'None';
+
+                                                            const infoMsg = getGroupInfoMsg({
+                                                                    groupName,
+                                                                    remoteJid,
+                                                                    owner,
+                                                                    memberCount,
+                                                                    adminCount,
+                                                                    groupDesc,
+                                                                    adminList,
+                                                                });
+
+                                                            await sendToChat(botInstance, remoteJid, { message: infoMsg, mentions: [owner, ...admins.map(a => a.id)] });
+                                                            console.log('✅ Group info sent.');
+                                                        } catch (error) {
+                                                            console.error('❌ Failed to fetch group info:', error);
+                                                            await sendToChat(botInstance, remoteJid, { message: '❌ Failed to fetch group info. Please try again later.' });
+                                                        }
+                                                        return true; 
+                                                case 'description':
+                                                    console.log('ℹ️ Executing "group description" subcommand...');
                                                     try {
+                                                        if (!botIsAdmin) {
+                                                                console.log(`❌ Command "group ${subCommand}" denied: The bot is not an admin in this group.`);
+                                                                await sendToChat(botInstance, remoteJid, { message: '❌ The bot must be an admin to execute this command.' });
+                                                                return true;
+                                                            }
                                                         await sock.groupUpdateDescription(remoteJid, subCommandArgs);
                                                         await sendToChat(botInstance, remoteJid, { message: `✅ Group description updated to:\n${subCommandArgs}` });
                                                         console.log('✅ Group description updated.');
@@ -651,10 +672,17 @@ const handleGroupCommand = async (sock, userId, message, command, args, sender, 
                                                         await sendToChat(botInstance, remoteJid, { message: '❌ Failed to update group description. Please try again later.' });
                                                     }
                                                     break;
+
+                                                    
                                         
                                                 case 'name':
                                                     console.log('✏️ Executing "group name" subcommand...');
                                                     try {
+                                                        if (!botIsAdmin) {
+                                                                console.log(`❌ Command "group ${subCommand}" denied: The bot is not an admin in this group.`);
+                                                                await sendToChat(botInstance, remoteJid, { message: '❌ The bot must be an admin to execute this command.' });
+                                                                return true;
+                                                            }
                                                         await sock.groupUpdateSubject(remoteJid, subCommandArgs);
                                                         await sendToChat(botInstance, remoteJid, { message: `✅ Group name updated to: ${subCommandArgs}` });
                                                         console.log('✅ Group name updated.');
@@ -695,6 +723,11 @@ const handleGroupCommand = async (sock, userId, message, command, args, sender, 
                                                 case 'pic':
                                                     console.log('🖼️ Executing "group pic" subcommand...');
                                                     try {
+                                                        if (!botIsAdmin) {
+                                                                console.log(`❌ Command "group ${subCommand}" denied: The bot is not an admin in this group.`);
+                                                                await sendToChat(botInstance, remoteJid, { message: '❌ The bot must be an admin to execute this command.' });
+                                                                return true;
+                                                            }
                                                         // Check if the message is a reply to an image
                                                         const quotedMessage = message.message?.extendedTextMessage?.contextInfo?.quotedMessage;
                                                         console.log('🔍 Debugging quotedMessage:', quotedMessage);
@@ -742,6 +775,11 @@ const handleGroupCommand = async (sock, userId, message, command, args, sender, 
                                                     case 'link':
                                                         console.log('🔗 Executing "group link" subcommand...');
                                                         try {
+                                                            if (!botIsAdmin) {
+                                                                console.log(`❌ Command "group ${subCommand}" denied: The bot is not an admin in this group.`);
+                                                                await sendToChat(botInstance, remoteJid, { message: '❌ The bot must be an admin to execute this command.' });
+                                                                return true;
+                                                            }
                                                             // Fetch the group invite link
                                                             const groupInviteCode = await sock.groupInviteCode(remoteJid);
                                                             const groupLink = `https://chat.whatsapp.com/${groupInviteCode}`;
@@ -996,92 +1034,106 @@ const handleGroupCommand = async (sock, userId, message, command, args, sender, 
                                                     await sendToChat(botInstance, remoteJid, { message: '✅ Group admins will no longer be bypassed for Anti-Link.' });
                                                     break;
                                         
-                                                    case 'bypass':
-                                                        console.log('🔄 Executing "bypass" subcommand...');
-                                                    
-                                                        // Check if the command is a reply to a message
-                                                        const quotedMessage = message.message?.extendedTextMessage?.contextInfo?.quotedMessage;
-                                                        const quotedParticipant = message.message?.extendedTextMessage?.contextInfo?.participant;
-                                                    
-                                                        let bypassUser;
-                                                        if (quotedMessage && quotedParticipant) {
-                                                            // Extract the user ID from the replied message
-                                                            bypassUser = quotedParticipant;
-                                                            console.log(`🔍 Extracted user from reply: ${bypassUser}`);
-                                                        } else {
-                                                            // Fallback to using the mentioned user in the command arguments
-                                                            bypassUser = args[1]?.replace('@', '') + '@s.whatsapp.net';
-                                                            console.log(`🔍 Extracted user from arguments: ${bypassUser}`);
+                                             case 'bypass': {
+                                                        let userJid;
+
+                                                        // Prefer mention
+                                                        if (message.message?.extendedTextMessage?.contextInfo?.mentionedJid?.length) {
+                                                            userJid = message.message.extendedTextMessage.contextInfo.mentionedJid[0];
                                                         }
-                                                    
-                                                        // Validate the user mention
-                                                        if (!bypassUser || !bypassUser.endsWith('@s.whatsapp.net')) {
-                                                            console.error(`❌ Invalid user mention: ${bypassUser}`);
-                                                            await sendToChat(botInstance, remoteJid, { message: '❌ Please reply to a valid user or mention a valid user to bypass (e.g., @1234567890).' });
+
+                                                        // Fallback to reply
+                                                        if (!userJid && message.message?.extendedTextMessage?.contextInfo?.stanzaId) {
+                                                            userJid = message.message.extendedTextMessage.contextInfo.participant;
+                                                        }
+
+                                                        // Fallback to argument (digits only)
+                                                        if (!userJid && args[1]) {
+                                                            const num = args[1].replace(/\D/g, '');
+                                                            if (num.length > 5) userJid = `${num}@s.whatsapp.net`;
+                                                        }
+
+                                                        if (!userJid) {
+                                                            await sendToChat(botInstance, remoteJid, { message: '❌ Please mention a user or reply to their message to bypass.' });
                                                             return true;
                                                         }
-                                                    
-                                                        console.log(`🔄 Adding ${bypassUser} to bypass list for group ${remoteJid}.`);
-                                                    
-                                                        try {
-                                                            // Fetch current Anti-Link settings
-                                                            const groupSettings = await getAntiLinkSettings(remoteJid, userIdFromDatabase.user_id);
-                                                    
-                                                            // Update the bypass list
-                                                            const updatedBypassUsers = [...new Set([...(groupSettings.bypass_users || []), bypassUser])]; // Ensure no duplicates
-                                                            await updateAntiLinkSettings(remoteJid, userIdFromDatabase.user_id, { bypass_users: updatedBypassUsers });
-                                                    
-                                                            // Send a confirmation message with a mention
-                                                            await sendToChat(botInstance, remoteJid, {
-                                                                message: `✅ User @${bypassUser.split('@')[0]} has been added to the bypass list.`,
-                                                                mentions: [bypassUser], // Mention the user
-                                                            });
-                                                            console.log(`✅ User ${bypassUser} added to bypass list for group ${remoteJid}.`);
-                                                        } catch (error) {
-                                                            console.error(`❌ Failed to update bypass list for group ${remoteJid}:`, error);
-                                                            await sendToChat(botInstance, remoteJid, { message: '❌ Failed to update the bypass list. Please try again later.' });
-                                                        }
-                                                        break;
-                                        
-                                                case 'db':
-                                                    const dbUser = args[1]?.replace('@', '') + '@s.whatsapp.net';
-                                                    if (!dbUser) {
-                                                        await sendToChat(botInstance, remoteJid, { message: '❌ Please mention a user to remove from the bypass list.' });
+
+                                                        // Add user to bypass list logic (your existing code)
+                                                        const groupSettings = await getAntiLinkSettings(remoteJid, userIdFromDatabase.user_id);
+                                                        const updatedBypassUsers = [...new Set([...(groupSettings.bypass_users || []), userJid])];
+                                                        await updateAntiLinkSettings(remoteJid, userIdFromDatabase.user_id, { bypass_users: updatedBypassUsers });
+
+                                                        // Send confirmation with WhatsApp-style mention
+                                                        await sendToChat(botInstance, remoteJid, {
+                                                            message: `✅ User <@${userJid.split('@')[0]}> has been added to the bypass list.`,
+                                                            mentions: [userJid],
+                                                        });
+
                                                         return true;
                                                     }
-                                        
-                                                    console.log(`🔄 Removing ${dbUser} from bypass list for group ${remoteJid}.`);
-                                                    const currentSettings = await getAntiLinkSettings(remoteJid, userIdFromDatabase.user_id);
-                                                    const filteredBypassUsers = (currentSettings.bypass_users || []).filter((user) => user !== dbUser);
-                                        
-                                                    await updateAntiLinkSettings(remoteJid, userIdFromDatabase.user_id, { bypass_users: filteredBypassUsers });
-                                                    await sendToChat(botInstance, remoteJid, { message: `✅ User @${dbUser.split('@')[0]} has been removed from the bypass list.` });
-                                                    break;
-                                        
-                                                case 'list':
-                                                    console.log(`🔄 Fetching Anti-Link settings for group ${remoteJid}.`);
-                                                    const settings = await getAntiLinkSettings(remoteJid, userIdFromDatabase.user_id);
-                                                    const bypassUsersList = (settings.bypass_users?.length)
-                                                        ? settings.bypass_users.map((user) => `   ◦ @${user.split('@')[0]}`).join('\n')
-                                                        : '   None';
 
-                                                    const statusMessage = 
-                                                    `*🛡️ Anti-Link Settings*
-                                                    ━━━━━━━━━━━━━━━━━━━━
-                                                    • *Enabled:* ${settings.antilink_enabled ? '✅ Yes' : '❌ No'}
-                                                    • *Warning Count:* ${settings.warning_count || 3}
-                                                    • *Bypass Admin:* ${settings.bypass_admin ? '✅ Yes' : '❌ No'}
-                                                    • *Bypass Users:*
-                                                    ${bypassUsersList}
-                                                    ━━━━━━━━━━━━━━━━━━━━`;
 
-                                                    await sendToChat(botInstance, remoteJid, { message: statusMessage });
-                                                    break;
+                                                                                            
+                                               case 'db':
+                                                            let dbUserJid;
+                                                            if (message.message?.extendedTextMessage?.contextInfo?.mentionedJid?.length) {
+                                                                dbUserJid = message.message.extendedTextMessage.contextInfo.mentionedJid[0];
+                                                            }
+                                                            if (!dbUserJid && message.message?.extendedTextMessage?.contextInfo?.stanzaId) {
+                                                                dbUserJid = message.message.extendedTextMessage.contextInfo.participant;
+                                                            }
+                                                            if (!dbUserJid && args[1]) {
+                                                                const num = args[1].replace(/\D/g, '');
+                                                                if (num.length > 5) dbUserJid = `${num}@s.whatsapp.net`;
+                                                            }
+                                                            if (!dbUserJid) {
+                                                                await sendToChat(botInstance, remoteJid, { message: '❌ Please mention a user to remove from the bypass list.' });
+                                                                return true;
+                                                            }
+
+                                                            console.log(`🔄 Removing ${dbUserJid} from bypass list for group ${remoteJid}.`);
+                                                            const currentSettings = await getAntiLinkSettings(remoteJid, userIdFromDatabase.user_id);
+                                                            const filteredBypassUsers = (currentSettings.bypass_users || []).filter((user) => user !== dbUserJid);
+
+                                                            await updateAntiLinkSettings(remoteJid, userIdFromDatabase.user_id, { bypass_users: filteredBypassUsers });
+                                                            await sendToChat(botInstance, remoteJid, {
+                                                                message: `✅ User @${dbUserJid.replace(/\D/g, '')} has been removed from the bypass list.`,
+                                                                mentions: [dbUserJid],
+                                                            });
+                                                            break;
                                         
-                                                default:
-                                                    await sendToChat(botInstance, remoteJid, { message: '❌ Invalid subcommand. Usage: antilink <on/off/warncount/bypassadmin/dbadmin/bypass/db/list>' });
-                                                    break;
-                                                }
+                                               case 'list':
+                                                        console.log(`🔄 Fetching Anti-Link settings for group ${remoteJid}.`);
+                                                        const settings = await getAntiLinkSettings(remoteJid, userIdFromDatabase.user_id);
+                                                        const bypassUsers = settings.bypass_users || [];
+                                                        let mentions = [];
+                                                        let bypassUsersList = '   None';
+
+                                                        if (bypassUsers.length) {
+                                                            bypassUsersList = bypassUsers.map(user => {
+                                                                mentions.push(user);
+                                                                return `   ◦ @${user.replace(/\D/g, '')}`;
+                                                            }).join('\n');
+                                                        }
+
+                                                        // Fetch group metadata for name and ID
+                                                      let groupName = 'Unknown';
+                                                        try {
+                                                            groupName = await getGroupName(sock, remoteJid);
+                                                            if (!groupName) groupName = 'Unknown';
+                                                        } catch (e) {
+                                                            console.error('❌ Failed to fetch group name:', e);
+                                                        }
+
+                                                        const statusMessage = getAntiLinkStatusMsg({
+                                                            settings,
+                                                            bypassUsersList,
+                                                            groupName,
+                                                            groupId: remoteJid
+                                                        });
+                                                        await sendToChat(botInstance, remoteJid, { message: statusMessage, mentions });
+                                                        break;
+                                                    }
                                                     return true;
                                                 case 'admin':
                                                  console.log('📢 Executing "admin" command...');
