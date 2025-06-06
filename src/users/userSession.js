@@ -304,7 +304,7 @@ const startNewSession = async (phoneNumber, io, authId, pairingMethod) => {
         // --- QR code: if restart/timeout/lost, just retry quietly ---
         if (
             pairingMethod === 'qrCode' &&
-            [DisconnectReason.restartRequired, DisconnectReason.connectionLost, DisconnectReason.timedOut, 428, DisconnectReason.badSession].includes(reason)
+            [DisconnectReason.restartRequired, DisconnectReason.connectionLost, DisconnectReason.timedOut, 428, DisconnectReason.unavailableService, DisconnectReason.unknown].includes(reason)
         ) {
             console.warn(`🔄 [QR] Restarting session for ${phoneNumber} after connection close (${reason})`);
             setTimeout(() => startNewSession(phoneNumber, io, authId, pairingMethod), 2000);
@@ -314,7 +314,7 @@ const startNewSession = async (phoneNumber, io, authId, pairingMethod) => {
         // --- Pairing code or other QR failures: cleanup and notify ---
        else if (
             pairingMethod === 'pairingCode' ||
-            ![DisconnectReason.restartRequired, DisconnectReason.connectionLost, DisconnectReason.timedOut, 428, DisconnectReason.badSession].includes(reason)
+            ![DisconnectReason.restartRequired, DisconnectReason.connectionLost, DisconnectReason.timedOut, 428, DisconnectReason.unavailableService, DisconnectReason.unknown].includes(reason)
         ) {
             if (botInstances[phoneNumber]) {
                 try { await botInstances[phoneNumber].sock.ws.close(); } catch {}
@@ -342,12 +342,13 @@ const startNewSession = async (phoneNumber, io, authId, pairingMethod) => {
         case DisconnectReason.multideviceMismatch:
         case DisconnectReason.connectionReplaced:
         case DisconnectReason.connectionReconnect:
-        case DisconnectReason.badSession:
+        case DisconnectReason.unavailableService:
+        case DisconnectReason.unknown: // Custom code for "unknown reason"
         case 428: // Custom code for "restart required"
             console.warn(`🔄 Restarting session for ${phoneNumber} after connection close (${reason})`);
-            setTimeout(() => startNewSession(phoneNumber, io, authId, pairingMethod), 2000);
+            setTimeout(() => startNewSession(phoneNumber, io, authId, pairingMethod), 5000);
             break;
-        //case DisconnectReason.badSession:
+        case DisconnectReason.badSession:
         case DisconnectReason.loggedOut:
         case DisconnectReason.Failure:
         case 405: // Custom code for "bad session"

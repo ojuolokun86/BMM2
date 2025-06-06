@@ -1,3 +1,4 @@
+
 /**
  * Generate a random emoji from a predefined list.
  * @returns {string} - A random emoji.
@@ -13,25 +14,31 @@ const getRandomEmoji = () => {
     return emojis[Math.floor(Math.random() * emojis.length)];
 };
 
-/**
- * Generate a formatted tagall message.
- * @param {string} groupName - The name of the group.
- * @param {string} sender - The sender's WhatsApp ID.
- * @param {string} botOwnerName - The bot owner's name.
- * @param {string} messageContent - The message content (or "No message" if empty).
- * @param {string[]} mentions - An array of user mentions.
- * @returns {object} - The formatted tagall message object with text and mentions.
- */
-const generateTagAllMessage = (groupName, sender, botOwnerName, messageContent, mentions) => {
-    let text = `🚀 Techitoon AI Assistant 🚀\n\n`;
-    text += `│👥 Group : *${groupName}*\n`;
-    text += `│👤 Hey${getRandomEmoji()} : @${(sender || '').split('@')[0]}\n`; // Use random emoji for "Hey"
-    text += `│🤖 Bot Owner : *${botOwnerName}*\n`;
-    text += `│📜 Message : *${messageContent || 'No message'}*\n`;
-    text += `╰─────────────━┈⊷\n\n`;
+const generateTagAllMessage = (groupName, sender, botOwnerName, messageContent, mentions, adminList) => {
+    mentions = Array.isArray(mentions) ? mentions : [];
+    adminList = Array.isArray(adminList) ? adminList : [];
+    const totalMembers = mentions.length;
+    const adminIds = adminList.map(id => id.split('@')[0]);
+    
+    let text = `🚀 *Techitoon AI Assistant* 🚀\n\n`;
+    text += `📛 *Group:* *${groupName}*\n`;
+    text += `🙋 *Requested by:* @${(sender || '').split('@')[0]}\n`;
+    text += `👑 *Bot Owner:* *${botOwnerName}*\n`;
+    text += `📝 *Message:* *${messageContent || 'No message'}*\n\n`;
 
-    // Add mentions with random emojis
-    text += mentions.map((id) => `${getRandomEmoji()} @${id.split('@')[0]}`).join('\n');
+    text += `📊 *Stats:*\n`;
+    text += `• 👥 Total Members: *${totalMembers}*\n`;
+    text += `• 👮 Admins: *${adminList.length}*\n`;
+    text += `• 🙎 Non-Admins: *${totalMembers - adminList.length}*\n`;
+    text += `━━━━━━━━━━━━━━━━━━━━\n\n`;
+
+    // Tag everyone, indicating admins
+    text += mentions.map(id => {
+        const username = id.split('@')[0];
+        const isAdmin = adminIds.includes(username);
+        const emoji = isAdmin ? '👮' : getRandomEmoji();
+        return `${emoji} @${username}`;
+    }).join('\n');
 
     return { text, mentions };
 };

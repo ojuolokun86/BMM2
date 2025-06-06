@@ -159,7 +159,7 @@ const enforceMemoryLimit = async (phoneNumber) => {
             .from('users')
             .select('max_ram, max_rom, auth_id')
             .eq('user_id', phoneNumber)
-            .single();
+            .maybeSingle();
 
         if (error) throw error;
         user = data;

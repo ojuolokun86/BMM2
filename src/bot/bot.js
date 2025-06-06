@@ -1,6 +1,6 @@
 const handleMessage = require('../message-controller/msgHandler'); // Import the message handler
 const { handleNewUserJoin } = require('../utils/groupUser'); // Import the function to handle new user joins
-const { botInstances, intentionalRestarts } = require('../utils/globalStore'); // Import the global botInstances object
+const { botInstances, dndSettings,} = require('../utils/globalStore'); // Import the global botInstances object
 const { viewUnseenStatuses } = require('../message-controller/statusView'); // Import the function
 const { getUserId } = require('../utils/auth'); // Import the function to get user ID
 const { updateUserMetrics } = require('../database/models/metrics'); // Import the user metrics functions
@@ -10,6 +10,9 @@ const path = require('path');
 const { auth } = require('../supabaseClient');
 const { getUser } = require('../database/userDatabase'); // Import the user database functions
 const { startNewSession } = require('../users/userSession'); // Import the function to start a new session
+const { formatResponse } = require('../utils/utils');
+const { useHybridAuthState } = require('../database/hybridAuthState');
+
 
 const userQueues = new Map(); // Map to store per-user/group queues
 
@@ -70,51 +73,6 @@ const processQueue = async (queueKey) => {
 };
 
 
-
-
-
-// const processQueue = async (userId) => {
-//     const queue = userQueues.get(userId); // Retrieve the user's queue
-//     const user = await getUser(userId); // Fetch the user object
-
-//     if (!user) {
-//         console.error(`❌ Failed to fetch user for userId: ${userId}`);
-//         return;
-//     }
-
-//     const authId = user.auth_id; // Extract authId from the user object
-    
-//     if (!authId) {
-//         console.error(`❌ authId is undefined for user ${userId}`);
-//         return;
-//     }
-
-//     while (queue && queue.length > 0) {
-//         const task = queue[0]; // Get the first task in the queue
-
-//         const startTime = Date.now(); // Start timing the task
-//         try {
-//             await task(); // Execute the task (process the message)
-//         } catch (error) {
-//             console.error(`❌ Error processing task for user ${userId}:`, error);
-//         }
-//         const endTime = Date.now(); // End timing the task
-//         const timeTaken = endTime - startTime;
-
-//         // Save the time delay for the user
-//         updateUserMetrics(userId, authId, { queueProcessingTime: timeTaken });
-
-//         console.log(`⏱️ Task for user ${userId} and authId ${authId} took ${timeTaken}ms to complete.`);
-
-//         queue.shift(); // Remove the processed task from the queue
-//     }
-
-//     // Remove the queue if it's empty
-//     if (queue && queue.length === 0) {
-//         userQueues.delete(userId);
-//     }
-// };
-
 function extractMessageContent(message) {
     if (!message || !message.message) return '';
     const msg = message.message;
@@ -168,6 +126,20 @@ function extractMessageContent(message) {
         const amount = msg.paymentMessage.amount;
         return `💰 Payment of ${amount.currency} ${amount.amount} received`;
     }
+
+     if (msg.imageMessage) return `🖼️ Image${msg.imageMessage.caption ? ': ' + msg.imageMessage.caption : ''}`;
+    if (msg.videoMessage) return `🎥 Video${msg.videoMessage.caption ? ': ' + msg.videoMessage.caption : ''}`;
+    if (msg.audioMessage) return `🎵 Audio message`;
+    if (msg.documentMessage) return `📄 Document: ${msg.documentMessage.fileName || ''}`;
+    if (msg.stickerMessage) return '🗒️ Sticker';
+    if (msg.contactMessage) return `👤 Contact: ${msg.contactMessage.displayName || ''}`;
+    if (msg.locationMessage) return `📍 Location: ${msg.locationMessage.degreesLatitude},${msg.locationMessage.degreesLongitude}`;
+    if (msg.liveLocationMessage) return `📍 Live Location: ${msg.liveLocationMessage.degreesLatitude},${msg.liveLocationMessage.degreesLongitude}`;
+    if (msg.audioMessage?.caption) return msg.audioMessage.caption;
+    if (msg.gifMessage?.url) return `🎞️ GIF: ${msg.gifMessage.url}`;
+
+    // Status (if you want to show status updates)
+    if (msg.protocolMessage?.type === 2) return '🟢 Status update';
 
     if (msg.orderMessage?.title) return `🛍️ Order: ${msg.orderMessage.title}`;
     if (msg.documentMessage?.fileName) return `📄 Document: ${msg.documentMessage.fileName}`;
@@ -246,14 +218,6 @@ module.exports = async (sock, userId, version) => {
     } catch (err) {}
     console.log(`[${new Date().toISOString()}] ⏱️ Presence available took ${Date.now() - t1}ms`);
 
-    // 2. Assert session
-    // const t2 = Date.now();
-    // try {
-    //     await sock.assertSessions([remoteJid]);
-    //     console.log('📩 aseert sucessful')
-    // } catch (err) {}
-    // console.log(`[${new Date().toISOString()}] ⏱️ Assert session took ${Date.now() - t2}ms`);
-
     // 3. Handle message
     const t3 = Date.now();
     try {
@@ -262,21 +226,22 @@ module.exports = async (sock, userId, version) => {
     } catch (err) {
         console.error(`[${new Date().toISOString()}] ❌ handleMessage error:`, err);
     } finally {
-        // 4. Presence update (unavailable) - always runs
-        const t4 = Date.now();
-        try {
-            await sock.sendPresenceUpdate('unavailable', remoteJid);
-        } catch (err) {}
-        console.log(`[${new Date().toISOString()}] ⏱️ Presence unavailable took ${Date.now() - t4}ms`);
+    // 4. Presence update (unavailable) - always runs
+    const t4 = Date.now();
+    try {
+        // Wait 2 seconds before setting unavailable
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        await sock.sendPresenceUpdate('unavailable', remoteJid);
+        console.log(`🚀presence unavailable sent for ${userId}`);
+    } catch (err) {}
+    console.log(`[${new Date().toISOString()}] ⏱️ Presence unavailable took ${Date.now() - t4}ms`);
 
-        const endTime = Date.now();
-        console.log(`[${new Date().toISOString()}] ✅ Total processing time: ${endTime - startTime}ms`);
-    
-    }
+    const endTime = Date.now();
+    console.log(`[${new Date().toISOString()}] ✅ Total processing time: ${endTime - startTime}ms`);
+}
     return{ userId, authId };
 });
     });
-
     // Listen for group participant updates
     sock.ev.on('group-participants.update', async (update) => {
         const { id: groupId, participants, action } = update;
@@ -293,4 +258,48 @@ module.exports = async (sock, userId, version) => {
             // Handle user removal if needed
         }
     });
+
+    const handledCalls = new Set();
+
+sock.ev.on('call', async (callEvent) => {
+    for (const call of callEvent) {
+        // Only handle incoming offers (type === 'offer') and not already handled
+        if (handledCalls.has(call.id)) continue;
+        handledCalls.add(call.id);
+
+        // Optionally, clean up old call IDs after some time
+        setTimeout(() => handledCalls.delete(call.id), 60 * 1000); // 1 minute
+
+        const callerJid = call.from;
+        console.log(`📞 Call from ${callerJid} for user ${userId}`);
+        if (dndSettings && dndSettings[userId]) {
+            console.log(`🔕 User ${userId} has DND enabled. Rejecting call from ${callerJid}.`);
+            try {
+                await sock.rejectCall(call.id, call.from);
+                console.log(`🔕 Rejected call from ${callerJid} due to DND.`);
+                const reply = await formatResponse(sock, "❌ Sorry, I'm unavailable for calls right now. Please send a message instead.");
+                await sock.sendMessage(callerJid, { text: reply });
+            } catch (err) {
+                console.error(`❌ Failed to reject call from ${callerJid}:`, err);
+            }
+        }
+    }
+});
+const { state, saveCreds } = await useHybridAuthState(userId, authId);
+sock.ev.on('creds.update', async () => {
+    await saveCreds();
+    console.log('✅ Session credentials updated and saved.');
+});
+
+// Optionally, after handling a session close or prekey event:
+sock.ev.on('connection.update', async (update) => {
+    if (update.connection === 'close' || update.qr) {
+        await saveCreds();
+        console.log('✅ Session credentials saved after connection update.');
+    }
+});
 };
+
+// This code initializes a WhatsApp bot instance for a specific user, sets up event listeners for incoming messages and group participant updates,
+// and processes messages in a queue to ensure they are handled sequentially. It also handles new user joins in groups and rejects calls if the user has DND enabled.
+

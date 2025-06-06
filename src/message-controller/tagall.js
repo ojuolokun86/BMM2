@@ -2,6 +2,7 @@ const { generateTagAllMessage } = require('../utils/style'); // Import tagall me
 const { sendToChat } = require('../utils/messageUtils'); // Import the sendToChat function
 const { downloadMediaMessage } = require('@whiskeysockets/baileys'); // Import media download function
 const { getBotOwnerName } = require('../utils/groupData'); // Import bot owner name function
+const { getGroupAdmins } = require('../utils/groupData');
 
 /**
  * Handle the "tagall" command.
@@ -21,6 +22,7 @@ const handleTagAllCommand = async (sock, message, remoteJid, userId, useFormatte
         const groupName = groupMetadata.subject; // Get the group name
         const senderName = message.pushName || 'Unknown'; // Get the sender's name
         const botOwnerName = await getBotOwnerName(userId); // Fetch the bot owner's WhatsApp name
+        const adminList = await getGroupAdmins(sock, remoteJid); // returns array of admin IDs
         let additionalMessage = args.join(' ') || ''; // Get the additional message content from the arguments
           // Check if the message is a reply
         const quotedMessage = message.message?.extendedTextMessage?.contextInfo?.quotedMessage;
@@ -40,7 +42,7 @@ const handleTagAllCommand = async (sock, message, remoteJid, userId, useFormatte
                 console.log(`🔍 Using quoted message as additional message: ${additionalMessage}`);
 
                 const tagAllMessage = useFormattedTagAll
-                    ? generateTagAllMessage(groupName, senderName, botOwnerName, additionalMessage, participants).text
+                    ? generateTagAllMessage(groupName, senderName, botOwnerName, additionalMessage, participants, adminList).text
                     : `${additionalMessage || '📢 Attention everyone!'}`;
 
                 await sendToChat(sock, remoteJid, { message: tagAllMessage, mentions, quotedMessage: message });
@@ -71,7 +73,7 @@ const handleTagAllCommand = async (sock, message, remoteJid, userId, useFormatte
                     media: mediaBuffer,
                     mediaType,
                     caption: useFormattedTagAll
-                        ? generateTagAllMessage(groupName, senderName, botOwnerName, originalCaption, participants).text
+                        ? generateTagAllMessage(groupName, senderName, botOwnerName, originalCaption, participants, adminList).text
                         : `${originalCaption || '📢 Attention everyone!'}`,
                     mentions,
                 };
@@ -90,7 +92,7 @@ const handleTagAllCommand = async (sock, message, remoteJid, userId, useFormatte
         // Default behavior: Send a formatted or plain tagall message
         console.log('📢 Sending default tagall message...');
         if (useFormattedTagAll) {
-            const { text, mentions } = generateTagAllMessage(groupName, senderName, botOwnerName, additionalMessage, participants);
+            const { text, mentions } = generateTagAllMessage(groupName, senderName, botOwnerName, additionalMessage, participants, adminList);
             await sendToChat(sock, remoteJid, { message: text, mentions, quotedMessage: message });
         } else {
             const plainMessage = `${additionalMessage || '📢 Attention everyone!'}`;

@@ -1,5 +1,4 @@
 const { sendToChat } = require('../utils/messageUtils');
-const { getMenu } = require('../utils/menu');
 const { getInfo, getAboutMe } = require('../utils/about');
 const { restartUserBot } = require('../bot/restartBot');
 const { setChatAntidelete, setGlobalAntideleteForDMs } = require('./antidelete'); // Import the setChatAntidelete function
@@ -7,6 +6,7 @@ const { getUserTagFormat, updateUserTagFormat } = require('../database/userDatab
 const { getGroupMode, setGroupMode } = require('../bot/groupModeManager'); // Import setGroupMode
 const { repostViewOnceMedia, detectViewOnceMedia } = require('./viewonce'); // Adjust path if needed
 const { getUserPrefix, updateUserPrefix } = require('../database/userPrefix'); // Import prefix functions
+
 
 const { handleStatusCommand } = require('./statusView'); // Import the status command handler
 
@@ -95,16 +95,6 @@ const handleGeneralCommand = async (sock, message, command, args, userId, remote
                 }
 
                 break;
-
-                                
-
-        case 'menu':
-            console.log('📜 Executing "menu" command...');
-            const userPrefix = await getUserPrefix(userId); // Fetch the user's prefix
-            const menu = getMenu(userPrefix); // Pass the user's prefix to the menu
-            await sendToChat(botInstance, remoteJid, { message: menu, quotedMessage: message });
-            console.log('✅ Menu sent.');
-            break;
 
         case 'info':
             console.log('ℹ️ Executing "info" command...');

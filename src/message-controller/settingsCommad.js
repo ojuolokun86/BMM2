@@ -5,6 +5,7 @@ const globalStore = require('../utils/globalStore'); // Import the global store
 const { deleteUserData } = require('../database/userDatabase')
 const { updateFormatResponseSetting } = require('../utils/utils'); // Add at the top if not present
 const { normalizeUserId } = require('../utils/utils');
+const { dndSettings } = require('../utils/globalStore');
 
 
 /**
@@ -408,6 +409,39 @@ const handleSettingsCommand = async (sock, message, remoteJid, userId, command, 
     await sendToChat(sock, remoteJid, { message: '❌ Failed to update privacy: ' + (error.message || 'Unknown error') });
   }
   break;
+
+  case 'dnd':
+    try {
+        if (!['basic', 'gold', 'premium'].includes(subscriptionLevel)) {
+            await sendToChat(sock, remoteJid, {
+                message: '❌ Only basic, gold, and premium users can use this command.',
+            });
+            return;
+        }
+
+        const option = args[0]?.toLowerCase();
+        if (!['on', 'off'].includes(option)) {
+            await sendToChat(sock, remoteJid, {
+                message: '❌ Invalid option. Usage: `.DND on` or `.DND off`',
+            });
+            return;
+        }
+
+        // Store DND status in dndSettings for this user
+        dndSettings[userId] = option === 'on';
+
+        await sendToChat(sock, remoteJid, {
+            message: option === 'on'
+                ? '🔕 Do Not Disturb is now ENABLED. All incoming calls will be rejected.'
+                : '🔔 Do Not Disturb is now DISABLED. Incoming calls will be allowed.',
+        });
+    } catch (error) {
+        console.error('❌ Failed to update DND setting:', error);
+        await sendToChat(sock, remoteJid, {
+            message: '❌ Failed to update DND setting. Please try again later.',
+        });
+    }
+    break;
 
 
 
