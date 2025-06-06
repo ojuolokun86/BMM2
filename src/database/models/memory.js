@@ -163,6 +163,10 @@ const enforceMemoryLimit = async (phoneNumber) => {
 
         if (error) throw error;
         user = data;
+        if (!user) {
+            console.warn(`⚠️ No user found in DB for phoneNumber/user_id: ${phoneNumber}. Skipping memory enforcement.`);
+            return;
+        }
     } catch (error) {
         console.error(`❌ Failed to fetch memory limits for user ${phoneNumber}:`, error.message || error);
         return; // Don't enforce limits if we can't fetch them
