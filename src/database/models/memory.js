@@ -1,5 +1,6 @@
 const memoryStore = new Map(); // In-memory storage for sessions
 const  supabase  = require('../../supabaseClient'); // Supabase client for database operations
+const globalStore = require('../../utils/globalStore');
 
 
 /**
@@ -147,6 +148,10 @@ const listSessionsFromMemory = () => {
  * @param {string} phoneNumber - The phone number of the session.
  */
 const enforceMemoryLimit = async (phoneNumber) => {
+
+     if (globalStore.deletedUsers && globalStore.deletedUsers[phoneNumber]) {
+        return;
+    }
     const session = memoryStore.get(phoneNumber);
     if (!session) return;
 

@@ -1,5 +1,5 @@
 const { botInstances, antideleteSettings } = require('../utils/globalStore'); // Import the global botInstances object
-const { getUserPrefix, updateUserPrefix } = require('../database/userPrefix'); // Import prefix functions
+const { getUserPrefixCached, updateUserPrefix } = require('../database/userPrefix'); // Import prefix functions
 const { handleSettingsCommand } = require('./settingsCommad'); // Import the settings command handler
 const { handleGeneralCommand } = require('./generalCommand'); // Import general command handler
 const { sendReaction } = require('../utils/messageUtils'); // Import the sendReaction function
@@ -7,11 +7,12 @@ const { handleGroupCommand } = require('./groupCommand'); // Import group comman
 const { sendToChat } = require('../utils/messageUtils'); // Import message utility functions
 const env = require('../utils/loadEnv'); // Load environment variables
 const { normalizeUserId } = require('../utils/normalizeUserId'); // Import the normalization function
-const { getGroupMode, setGroupMode } = require('../bot/groupModeManager'); // Import setGroupMode
+const { getGroupMode, setGroupMode, getGroupModeCached } = require('../bot/groupModeManager'); // Import setGroupMode
 const { updateUserMetrics } = require('../database/models/metrics'); // Import the user metrics functions
 const supabase = require('../supabaseClient'); // Import Supabase client
 const { handleFunCommand } = require('./funCommand'); // Import fun command handler
 const { handleProtectionCommand } = require('./protection'); // Import protection command handler
+const { addAnalyticsData } = require('../server/info'); // Import analytics functions
 const {
     getMenuCategories,
     getGeneralMenu,
@@ -57,7 +58,7 @@ const handleCommand = async (sock, message, userId, authId, messageContent, subs
         }
 
         // Fetch the user's prefix from Supabase
-        const userPrefix = await getUserPrefix(userId); // Ensure this is initialized before use
+        const userPrefix = await getUserPrefixCached(userId); // Ensure this is initialized before use
         console.log(`🔍 Current prefix for user ${userId}: "${userPrefix}"`);
 
         // Extract the command and arguments
@@ -86,7 +87,7 @@ if (
     && isGroup
 ) {
     // Check group mode
-    const groupMode = await getGroupMode(remoteJid);
+    const groupMode = await getGroupModeCached(remoteJid);
     if (groupMode === 'admin') {
         // Allow if sender is group admin or bot owner
         const groupMetadata = await sock.groupMetadata(remoteJid);
@@ -164,6 +165,9 @@ case 'menu': {
             case 'delete':
             case 'leave':
             case 'description':
+            case 'stats':
+            case 'active':
+            case 'inactive':
                 console.log(`📢 Routing "${command}" to groupCommand.js...`);
                 const handled = await handleGroupCommand(sock, userId, message, command, args, sender, null, botInstance, true);
                 if (handled) {
@@ -313,6 +317,11 @@ case 'menu': {
             updateUserMetrics(userId, authId, { commandProcessingTime: timeTaken });
     
             console.log(`⏱️ Command handling for user ${userId} took ${timeTaken}ms.`); // Debug log
+
+            addAnalyticsData(authId, {
+                timestamp: new Date().toISOString(),
+                commandProcessingTime: endTime - startTime,
+            });
         }};
 
 module.exports = { handleCommand };

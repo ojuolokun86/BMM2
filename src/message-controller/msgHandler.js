@@ -1,7 +1,7 @@
 const { botInstances, antideleteSettings } = require('../utils/globalStore'); // Import the global botInstances object
 const { handleCommand } = require('./cmdHandler'); // Import the command handler
 const { getGroupMode } = require('../bot/groupModeManager'); // Import the group mode manager
-const { getUserPrefix } = require('../database/userPrefix'); // Import the prefix functions
+const { getUserPrefixCached } = require('../database/userPrefix'); // Import the prefix functions
 const env = require('../utils/loadEnv'); // Import environment variables
 const { handleMediaFile } = require('../utils/mediaFile'); // Correctly import the media file handler
 const { handleUserReply, } = require('./handleUserReply'); // Import user reply handler
@@ -18,8 +18,9 @@ const { updateUserMetrics } = require('../database/models/metrics'); // Import t
 const { updateLastActive } = require('../database/models/memory'); // Import the user database functions
 const  { handleAntideleteSave } = require('./antidelete'); // Import the antidelete functions
 const { handleMessageSecurity, activateSecurity, isSecurityActive } = require('../security/superSecurity');
-const { getUserFromUsersTable, getUserSubscriptionLevel } = require('../database/userDatabase'); // To get subscription level
+const { getUserFromUsersTable, getUserSubscriptionLevelCached } = require('../database/userDatabase'); // To get subscription level
 const { setDynamicPresence } = require('../utils/messageUtils'); 
+const { incrementGroupUserStat } = require('./groupStats');
 
 
 
@@ -41,7 +42,8 @@ module.exports = async (sock, message, userId, authId) => {
     const botId = sock.user?.id ? sock.user.id.split(':')[0].split('@')[0] : null;
     const senderId = sender; // Already normalized (no @)
     const isFromBotUser = senderId === botLid || senderId === botId;
-        
+    const normalizedSender = sender.split(':')[0].split('@')[0]; // Normalize sender ID without @domain
+
     const botInstanceId = userId; // Use the bot owner's ID as the instance ID
     
 
@@ -100,7 +102,7 @@ if (presenceSettings) {
 
     console.log(`[handleMessage] Step 1 (extract info) took ${Date.now() - tStart}ms`);
 
-       const subscriptionLevel = await getUserSubscriptionLevel(authId)
+       const subscriptionLevel = await getUserSubscriptionLevelCached(authId)
         console.log(`🔍 Subscription level for user ${userId}: and auth ${authId} "${subscriptionLevel}"`);
          await handleMessageSecurity({
         sock,
@@ -181,13 +183,18 @@ if (messageType === 'conversation' || messageType === 'extendedTextMessage') {
     if (messageType === 'protocolMessage' && message.message.protocolMessage.type === 0) {
         await handleAntidelete(sock, message, userId); // Pass the bot instance ID
         return;
-    }
+    } 
+            if (isGroup) {
+            const senderName = message.pushName || normalizedSender;
+            incrementGroupUserStat(remoteJid, normalizedSender, senderName);
+            console.log('🥶 group stats counting')
+        }
 
     // Process all messages (log or handle non-command messages here if needed)
     console.log('ℹ️ Processing all messages...');
 
     // Fetch the user's prefix from Supabase
-    const userPrefix = await getUserPrefix(userId);
+    const userPrefix = await getUserPrefixCached(userId);
     console.log(`🔍 Current prefix for user ${userId}: "${userPrefix}"`);
 
      if (isGroup && messageContent.startsWith(`${userPrefix}`)) {

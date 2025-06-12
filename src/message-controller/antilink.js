@@ -6,6 +6,7 @@ const linkRegex = /(https?:\/\/[^\s]+|www\.[^\s]+|wa\.me\/[^\s]+|chat\.whatsapp\
 const { normalizeUserId } = require('../utils/normalizeUserId'); // Import the normalize function
 const { deletedMessagesByBot } = require('../utils/globalStore');
 const { getGroupAdmins } = require('../utils/groupData'); // Import the group data functions
+const { antilinkCache } = require('../utils/settingsCache');
 
 /**
  * Fetch a user from the `users` table by user ID.
@@ -60,6 +61,10 @@ const updateAntiLinkSettings = async (groupId, userLid, settings) => {
         console.error(`❌ Error updating Anti-Link settings for group ${groupId} and user ${userLid}:`, error);
         throw error;
     }
+     if (!error) {
+        const cacheKey = `${groupId}:${userLid}`;
+        antilinkCache.set(cacheKey, { data: settings, timestamp: Date.now() });
+    }
 
     console.log(`✅ Anti-Link settings updated for group ${groupId} and user ${userLid}.`);
 };
@@ -86,6 +91,22 @@ const getAntiLinkSettings = async (groupId, userLid) => {
     }
     return data || { antilink_enabled: false, warning_count: 3, bypass_admin: false, bypass_users: [] }; // Default settings
 };
+
+/**
+ * Fetch Anti-Link settings for a group and user with caching.
+ * @param {string} groupId - The group ID.
+ * @param {string} userLid - The user's Linked ID.
+ * @returns {Promise<object>} - The Anti-Link settings.
+ */
+async function getAntiLinkSettingsCached(groupId, userLid) {
+    const cacheKey = `${groupId}:${userLid}`;
+    const cached = antilinkCache.get(cacheKey);
+    if (cached && (Date.now() - cached.timestamp < 10 * 60 * 1000)) return cached.data; // 10 min cache
+
+    const data = await getAntiLinkSettings(groupId, userLid); // original DB function
+    antilinkCache.set(cacheKey, { data, timestamp: Date.now() });
+    return data;
+}
 
 /**
  * Handle Anti-Link detection in a group.
@@ -130,7 +151,7 @@ const handleAntiLink = async (sock, message, userLid) => {
         return; // Do not process messages sent by the bot owner
     }
 
-    const groupSettings = await getAntiLinkSettings(chatId, userLid);
+    const groupSettings = await getAntiLinkSettingsCached(chatId, userLid);
     console.log(`🔍 Anti-Link enabled: ${groupSettings.antilink_enabled}`);
 
     if (!groupSettings.antilink_enabled) {

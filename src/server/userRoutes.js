@@ -7,10 +7,7 @@ const supabase = require('../supabaseClient');
 const { getUserSessionsMemoryUsage, getSessionMemoryUsage,getUptime, getUserTotalROM, getVersion, getLastActive } = require('../database/models/memory'); // Import memory functions
 const { getSocketInstance, userSockets } = require('./socket'); // Import the WebSocket instance getter
 const { getAllUserMetrics, getMetricsForAuthId } = require('../database/models/metrics'); // Import metrics functions
-const { getAnalyticsData, addAnalyticsData } = require('./info');
-const { getNotificationHistory, addNotification } = require('./info');
-const { getActivityLog, addActivityLog } = require('./info');
-const { getUserSummary, addUserData, addBotData, userData } = require('./info'); // Import userData
+const { getNotificationHistory, addNotification, getUserSummary, addUserData, addBotData, userData, getAnalyticsData, getActivityLog, } = require('./info'); // Import userData
 const { addComplaint } = require('../database/complaint'); // Import complaint functions
 const { getNotifications } = require('../database/notification'); // Import notification functions
 const { useHybridAuthState } = require('../database/hybridAuthState');
@@ -196,6 +193,7 @@ router.get('/bot-info', async (req, res) => {
         }));
 
         addBotData(authId, botsWithDetails); // Store bot data in memory
+        console.log(`📊 Fetched ${botsWithDetails.length} bot(s) for authId: ${authId}`); // Debug log
 
 
         res.status(200).json({ success: true, bots: botsWithDetails });
@@ -206,13 +204,16 @@ router.get('/bot-info', async (req, res) => {
 });
 // Restart a bot for the logged-in user
 router.post('/restart-bot/:phoneNumber', async (req, res) => {
+    console.log('📥 Received request to restart bot:', req.params, req.body); 
     const { phoneNumber } = req.params;
     const { authId } = req.body;
 
     console.log(`📥 Restarting bot for phoneNumber: ${phoneNumber}, authId: ${authId}`); // Debug log
 
     try {
-        const bots = listSessionsFromMemory().filter((bot) => bot.authId === authId && bot.phoneNumber === phoneNumber);
+      const bots = listSessionsFromMemory().filter(
+        (bot) => String(bot.authId) === String(authId) && String(bot.phoneNumber) === String(phoneNumber)
+        );
 
         if (!bots || bots.length === 0) {
             return res.status(404).json({ success: false, message: 'Bot not found for this user.' });
@@ -239,8 +240,9 @@ router.delete('/delete-bot/:phoneNumber', async (req, res) => {
     console.log(`📥 Deleting bot for phoneNumber: ${phoneNumber}, authId: ${authId}`); // Debug log
 
     try {
-        const bots = listSessionsFromMemory().filter((bot) => bot.authId === authId && bot.phoneNumber === phoneNumber);
-
+       const bots = listSessionsFromMemory().filter(
+        (bot) => String(bot.authId) === String(authId) && String(bot.phoneNumber) === String(phoneNumber)
+        );
         if (!bots || bots.length === 0) {
             return res.status(404).json({ success: false, message: 'Bot not found for this user.' });
         }

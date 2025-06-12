@@ -1,4 +1,5 @@
 const supabase = require('../supabaseClient'); // Import the Supabase client
+const { groupModeCache } = require('../utils/settingsCache');
 
 /**
  * Function to get the mode for a group from the database.
@@ -70,6 +71,8 @@ const setGroupMode = async (userId, groupId, mode) => {
             throw error;
         }
 
+         groupModeCache.set(groupId, { data: mode, timestamp: Date.now() });
+
         console.log(`✅ Group mode for user ${userId} in group ${groupId} saved as "${mode}".`);
     } catch (error) {
         console.error(`❌ Unexpected error saving group mode for user ${userId} in group ${groupId}:`, error);
@@ -125,6 +128,8 @@ const saveGroupMode = async (userId, groupId, mode) => {
             throw error;
         }
 
+         groupModeCache.set(groupId, { data: mode, timestamp: Date.now() });
+
         console.log(`✅ Group mode "${mode}" saved for user ${userId} in group ${groupId}.`);
     } catch (error) {
         console.error(`❌ Error saving group mode for user ${userId}:`, error);
@@ -132,4 +137,26 @@ const saveGroupMode = async (userId, groupId, mode) => {
     }
 };
 
-module.exports = { getGroupMode, setGroupMode, updateGroupModeOnAction, saveGroupMode};
+/**
+ * Get the group mode from the cache or fallback to the database.
+ * @param {string} groupId - The group ID.
+ * @returns {Promise<string>} - The mode for the group ("me" or "admin").
+ */
+async function getGroupModeCached(groupId) {
+    const cacheKey = groupId;
+    const cached = groupModeCache.get(cacheKey);
+    if (cached && (Date.now() - cached.timestamp < 10 * 60 * 1000)) {
+        return cached.data;
+    }
+    const mode = await getGroupMode(groupId);
+    groupModeCache.set(cacheKey, { data: mode, timestamp: Date.now() });
+    return mode;
+}
+
+module.exports = {
+    getGroupMode,
+    setGroupMode,
+    updateGroupModeOnAction,
+    saveGroupMode,
+    getGroupModeCached, // Export the cached getter
+};

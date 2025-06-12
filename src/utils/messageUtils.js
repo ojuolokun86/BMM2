@@ -39,7 +39,9 @@ const sendToChat = async (botInstance, chatId, options = {}) => {
                 ...(resolvedType === 'audio' || resolvedType === 'voice' ? { ptt: resolvedType === 'voice' } : {}),
                 ...(quotedMessage ? { quoted: quotedMessage } : {})
             };
-
+            console.log(`🔍 Sending ${resolvedType} to ${chatId} with caption:`, caption);
+            await botInstance.assertSessions([chatId]);
+            console.log(`🔍 Sending msg with session assert to ${chatId} with caption:`);
 
             await botInstance.sendMessage(chatId, mediaPayload);
             console.log(`✅ Sent ${resolvedType} to ${chatId} with caption: ${caption}`);

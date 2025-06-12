@@ -1,4 +1,4 @@
-const { getUserPrefix } = require('../database/userPrefix'); // Import the prefix functions
+const { getUserPrefix, getUserPrefixCached } = require('../database/userPrefix'); // Import the prefix functions
 const { mediaStore, } = require('../utils/globalStore'); // Import the mediaStore
 const { downloadMediaMessage } = require('@whiskeysockets/baileys'); // Import media download function
 const fs = require('fs');
@@ -106,7 +106,7 @@ const handleMediaFile = async (sock, message, userId) => {
         }
 
         // Fetch the user's prefix
-        const userPrefix = await getUserPrefix(userId);
+        const userPrefix = await getUserPrefixCached(userId);
         console.log(`🔍 Current prefix for user ${userId}: "${userPrefix}"`);
 
         // Dynamically load the handleCommand function

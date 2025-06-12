@@ -6,6 +6,17 @@ const { deleteUserData } = require('../database/userDatabase')
 const { updateFormatResponseSetting } = require('../utils/utils'); // Add at the top if not present
 const { normalizeUserId } = require('../utils/utils');
 const { dndSettings } = require('../utils/globalStore');
+const {
+    DND_MODES,
+    setDndMode,
+    addToWhitelist,
+    removeFromWhitelist,
+    addToBlacklist,
+    removeFromBlacklist,
+    setContactsOnly,
+    getDndSettingsCached,
+} = require('../dnd/dndManager');
+const { formatDndList } = require('../dnd/dndText');
 
 
 /**
@@ -409,31 +420,110 @@ const handleSettingsCommand = async (sock, message, remoteJid, userId, command, 
     await sendToChat(sock, remoteJid, { message: '❌ Failed to update privacy: ' + (error.message || 'Unknown error') });
   }
   break;
-
-  case 'dnd':
+    case 'dnd':
     try {
-        if (!['basic', 'gold', 'premium'].includes(subscriptionLevel)) {
+        const subcmd = (args[0] || '').toLowerCase();
+        const userOrGroupId = userId; // or remoteJid for group
+
+        if (subcmd === 'mode') {
+            const settings = await getDndSettingsCached(userOrGroupId);
             await sendToChat(sock, remoteJid, {
-                message: '❌ Only basic, gold, and premium users can use this command.',
+                message: `🔕 DND Modes:\n01. Off All\n02. On All\n03. Voice Only\n04. Video Only\n05. Contacts Only\n\nCurrent: ${settings.mode}`,
             });
             return;
         }
 
-        const option = args[0]?.toLowerCase();
-        if (!['on', 'off'].includes(option)) {
-            await sendToChat(sock, remoteJid, {
-                message: '❌ Invalid option. Usage: `.DND on` or `.DND off`',
-            });
+        // Change mode by code
+        if (subcmd === 'chmod') {
+            const code = args[1];
+            let mode;
+            switch (code) {
+                case '01': mode = DND_MODES.OFF_ALL; break;
+                case '02': mode = DND_MODES.ON_ALL; break;
+                case '03': mode = DND_MODES.VOICE_ONLY; break;
+                case '04': mode = DND_MODES.VIDEO_ONLY; break;
+                case '05': mode = DND_MODES.CONTACTS_ONLY; break;
+                default:
+                    await sendToChat(sock, remoteJid, { message: '❌ Invalid mode code.' });
+                    return;
+            }
+            await setDndMode(userOrGroupId, mode);
+            await sendToChat(sock, remoteJid, { message: `✅ DND mode changed to: ${mode}` });
             return;
         }
 
-        // Store DND status in dndSettings for this user
-        dndSettings[userId] = option === 'on';
+        // Whitelist/Blacklist management
+        if (subcmd === 'w') {
+            const action = args[1];
+            const number = args[2];
+            if (action === 'add' && number) {
+                const jid = number.replace(/[^0-9]/g, '') + '@s.whatsapp.net';
+                await addToWhitelist(userOrGroupId, jid);
+                await sendToChat(sock, remoteJid, { message: `✅ Added to whitelist: ${jid}` });
+                return;
+            }
+            if (action === 'remove' && number) {
+                const jid = number.replace(/[^0-9]/g, '') + '@s.whatsapp.net';
+                await removeFromWhitelist(userOrGroupId, jid);
+                await sendToChat(sock, remoteJid, { message: `✅ Removed from whitelist: ${jid}` });
+                return;
+            }
+            if (action === 'clear') {
+                const settings = await getDndSettingsCached(userOrGroupId);
+                settings.whitelist = [];
+                await setDndMode(userOrGroupId, settings.mode); // Save with cleared whitelist
+                await sendToChat(sock, remoteJid, { message: `✅ Whitelist cleared.` });
+                return;
+            }
+            // View list
+            const settings = await getDndSettingsCached(userOrGroupId);
+            await sendToChat(sock, remoteJid, { message: formatDndList(settings.whitelist, 'Whitelist') });
+            return;
+        }
+        if (subcmd === 'b') {
+            const action = args[1];
+            const number = args[2];
+            if (action === 'add' && number) {
+                const jid = number.replace(/[^0-9]/g, '') + '@s.whatsapp.net';
+                await addToBlacklist(userOrGroupId, jid);
+                await sendToChat(sock, remoteJid, { message: `✅ Added to blacklist: ${jid}` });
+                return;
+            }
+            if (action === 'remove' && number) {
+                const jid = number.replace(/[^0-9]/g, '') + '@s.whatsapp.net';
+                await removeFromBlacklist(userOrGroupId, jid);
+                await sendToChat(sock, remoteJid, { message: `✅ Removed from blacklist: ${jid}` });
+                return;
+            }
+             if (action === 'clear') {
+                const settings = await getDndSettingsCached(userOrGroupId);
+                settings.blacklist = [];
+                await setDndMode(userOrGroupId, settings.mode); // Save with cleared blacklist
+                await sendToChat(sock, remoteJid, { message: `✅ Blacklist cleared.` });
+                return;
+            }
+            // View list
+            const settings = await getDndSettingsCached(userOrGroupId);
+            await sendToChat(sock, remoteJid, { message: formatDndList(settings.blacklist, 'Blacklist') });
+            return;
+        }
+
+        // Contacts only
+        if (subcmd === 'contacts') {
+            const option = args[1];
+            if (option === 'on') await setContactsOnly(userOrGroupId, true);
+            else if (option === 'off') await setContactsOnly(userOrGroupId, false);
+            else {
+                const settings = await getDndSettingsCached(userOrGroupId);
+                await sendToChat(sock, remoteJid, { message: `Contacts only: ${settings.contactsOnly ? 'ON' : 'OFF'}` });
+                return;
+            }
+            await sendToChat(sock, remoteJid, { message: `✅ Contacts-only mode updated.` });
+            return;
+        }
 
         await sendToChat(sock, remoteJid, {
-            message: option === 'on'
-                ? '🔕 Do Not Disturb is now ENABLED. All incoming calls will be rejected.'
-                : '🔔 Do Not Disturb is now DISABLED. Incoming calls will be allowed.',
+            message: '❌ Invalid DND command. Use `.dnd mode`, `.dnd chmod <code>`, `.dnd whitelist add/remove <jid>`, `.dnd blacklist add/remove <jid>`, `.dnd contacts on/off`.',
         });
     } catch (error) {
         console.error('❌ Failed to update DND setting:', error);
@@ -442,7 +532,6 @@ const handleSettingsCommand = async (sock, message, remoteJid, userId, command, 
         });
     }
     break;
-
 
 
         }

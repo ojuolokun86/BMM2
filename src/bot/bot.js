@@ -1,17 +1,12 @@
 const handleMessage = require('../message-controller/msgHandler'); // Import the message handler
 const { handleNewUserJoin } = require('../utils/groupUser'); // Import the function to handle new user joins
-const { botInstances, dndSettings,} = require('../utils/globalStore'); // Import the global botInstances object
-const { viewUnseenStatuses } = require('../message-controller/statusView'); // Import the function
-const { getUserId } = require('../utils/auth'); // Import the function to get user ID
+const { botInstances,} = require('../utils/globalStore'); // Import the global botInstances object
 const { updateUserMetrics } = require('../database/models/metrics'); // Import the user metrics functions
 const { addActivityLog, addAnalyticsData } = require('../server/info'); // Import addActivityLog
-const fs = require('fs');
-const path = require('path');
-const { auth } = require('../supabaseClient');
-const { getUser } = require('../database/userDatabase'); // Import the user database functions
-const { startNewSession } = require('../users/userSession'); // Import the function to start a new session
+const { getUserCached } = require('../database/userDatabase'); // Import the user database functions
 const { formatResponse } = require('../utils/utils');
 const { useHybridAuthState } = require('../database/hybridAuthState');
+const { isCallAllowed } = require('../dnd/dndManager');
 
 
 const userQueues = new Map(); // Map to store per-user/group queues
@@ -160,9 +155,9 @@ function extractMessageContent(message) {
 
 module.exports = async (sock, userId, version) => {
     console.log(`🤖🤖 Initializing bot instance for user: ${userId} with WhatsApp Web version: ${version}`);
-    const user = await getUser(userId); // Get the user object for the user
-    console.lo
-    
+    const user = await getUserCached (userId); // Get the user object for the user
+    console.log(`🤖🤖 User object for userId ${userId}:`, user);
+
         if (!user) {
             console.error(`❌ User with userId ${userId} not found in the database.`);
             return; // Exit early if the user does not exist
@@ -185,6 +180,7 @@ module.exports = async (sock, userId, version) => {
     console.log(`🤖🤖 Bot instance initialized for user: ${userId} using WhatsApp Web version: ${version}`);
     // Listen for incoming messages
     sock.ev.on('messages.upsert', async (messageUpdate) => {
+        const startTime = Date.now();
         console.log(`📥 New message received for user: ${userId}`);
         const message = messageUpdate.messages[0];
         const messageContent = extractMessageContent(message); // Message content
@@ -198,18 +194,21 @@ module.exports = async (sock, userId, version) => {
         // Correctly identify the sender and receiver in DMs
         const realSender = isGroup ? normalizedSender : (isFromMe ? userId : normalizedSender);
         const realReceiver = isGroup ? remoteJid : userId;
-        console.log(`📥 Message from
+        console.info(`📥 Message from
              ${realSender}
               to ${realReceiver}
                in ${isGroup ? 'group' : 
                 'DM'}: ${messageContent}`);
 
-      // Add the message to the user's queue
+             
+        // Add the message to the user's queue
       const queueKey = isGroup ? remoteJid : userId;
       addToQueue(queueKey, async () => {
-    const startTime = Date.now();
+    
 
     console.log(`[${new Date().toISOString()}] ⏳ Start processing message for ${userId}`);
+
+    
 
     // 1. Presence update (available)
     const t1 = Date.now();
@@ -238,8 +237,18 @@ module.exports = async (sock, userId, version) => {
 
     const endTime = Date.now();
     console.log(`[${new Date().toISOString()}] ✅ Total processing time: ${endTime - startTime}ms`);
+    addActivityLog(authId, {
+        action: messageContent, // or any string you want to show as the action
+        type: 'message',
+        userId,
+        timestamp: new Date().toISOString(),
+        content: messageContent,
+        processingTime: endTime - startTime // in ms
+    });
 }
-    return{ userId, authId };
+
+ 
+    return { userId, authId };
 });
     });
     // Listen for group participant updates
@@ -267,15 +276,15 @@ sock.ev.on('call', async (callEvent) => {
         if (handledCalls.has(call.id)) continue;
         handledCalls.add(call.id);
 
-        // Optionally, clean up old call IDs after some time
-        setTimeout(() => handledCalls.delete(call.id), 60 * 1000); // 1 minute
+        setTimeout(() => handledCalls.delete(call.id), 60 * 1000); // Clean up after 1 min
 
         const callerJid = call.from;
-        console.log(`📞 Call from ${callerJid} for user ${userId}`);
-        if (dndSettings && dndSettings[userId]) {
-            console.log(`🔕 User ${userId} has DND enabled. Rejecting call from ${callerJid}.`);
+        // Use DND manager to check if call is allowed
+        const allowed = await isCallAllowed(userId, callerJid, call.isVideo ? 'video' : 'voice');
+        if (!allowed) {
+            console.log(`🔕 DND active for ${userId}. Rejecting call from ${callerJid}.`);
             try {
-                await sock.rejectCall(call.id, call.from);
+                await sock.rejectCall(call.id, callerJid);
                 console.log(`🔕 Rejected call from ${callerJid} due to DND.`);
                 const reply = await formatResponse(sock, "❌ Sorry, I'm unavailable for calls right now. Please send a message instead.");
                 await sock.sendMessage(callerJid, { text: reply });

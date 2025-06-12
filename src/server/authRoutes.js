@@ -133,19 +133,26 @@ router.post('/login', async (req, res) => {
 
 // Restart a bot for the logged-in user
 router.post('/restart-bot/:phoneNumber', async (req, res) => {
+    console.log('📥 Received request to restart bot:', JSON.stringify(req.params), JSON.stringify(req.body));
     const { phoneNumber } = req.params;
     const { authId } = req.body;
 
     console.log(`📥 Restarting bot for phoneNumber: ${phoneNumber}, authId: ${authId}`); // Debug log
 
     try {
-        const bots = listSessionsFromMemory().filter((bot) => bot.authId === authId && bot.phoneNumber === phoneNumber);
+       const bots = listSessionsFromMemory().filter(
+        (bot) => String(bot.authId) === String(authId) && String(bot.phoneNumber) === String(phoneNumber)
+        );
+        console.log(`🔍 Found ${bots.length} bot(s) for phoneNumber: ${phoneNumber} with authId: ${authId}`); // Debug log
 
         if (!bots || bots.length === 0) {
+            console.log(`⚠️ No bot found for phoneNumber: ${phoneNumber} with authId: ${authId}`); // Debug log
             return res.status(404).json({ success: false, message: 'Bot not found for this user.' });
         }
-
-         await restartUserBot(phoneNumber, null, authId); // Call the restartBot function
+    
+        const userId = phoneNumber;
+        console.log(`🔍 Found ${bots.length} bot(s) for phoneNumber: ${phoneNumber}`); // Debug log
+         await restartUserBot(userId, null, authId); // Call the restartBot function
         console.log(`✅ Bot restarted for phoneNumber: ${phoneNumber}`);
         res.status(200).json({ success: true, message: `Bot restarted successfully for ${phoneNumber}.` });
     } catch (error) {
@@ -162,7 +169,9 @@ router.delete('/delete-bot/:phoneNumber', async (req, res) => {
     console.log(`📥 Deleting bot for phoneNumber: ${phoneNumber}, authId: ${authId}`); // Debug log
 
     try {
-        const bots = listSessionsFromMemory().filter((bot) => bot.authId === authId && bot.phoneNumber === phoneNumber);
+       const bots = listSessionsFromMemory().filter(
+        (bot) => String(bot.authId) === String(authId) && String(bot.phoneNumber) === String(phoneNumber)
+        );
 
         if (!bots || bots.length === 0) {
             return res.status(404).json({ success: false, message: 'Bot not found for this user.' });

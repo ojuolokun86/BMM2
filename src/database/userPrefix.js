@@ -1,4 +1,5 @@
 const supabase = require('../supabaseClient');
+const { prefixCache } = require('../utils/settingsCache');
 
 /**
  * Fetch the prefix for a user from the `users` table in Supabase.
@@ -46,7 +47,7 @@ const updateUserPrefix = async (userId, newPrefix) => {
         console.error(`❌ Error updating prefix for user ${userId}:`, error);
         throw error;
     }
-
+      prefixCache.set(userId, { data: newPrefix, timestamp: Date.now() });
     console.log(`✅ Prefix for user ${userId} updated to "${newPrefix}".`);
 };
 
@@ -95,9 +96,19 @@ const deleteUserPrefix = async (userId) => {
     console.log(`✅ Prefix for user ${userId} deleted from Supabase.`);
 };
 
+async function getUserPrefixCached(userId) {
+    const cached = prefixCache.get(userId);
+    if (cached && (Date.now() - cached.timestamp < 10 * 60 * 1000)) return cached.data;
+
+    const prefix = await getUserPrefix(userId); // original DB function
+    prefixCache.set(userId, { data: prefix, timestamp: Date.now() });
+    return prefix;
+}
+
 module.exports = {
     getUserPrefix,
     updateUserPrefix,
     updateAllUserPrefixesToDefault,
     deleteUserPrefix,
+    getUserPrefixCached,
 };

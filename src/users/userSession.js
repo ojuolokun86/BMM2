@@ -124,8 +124,9 @@ const startNewSession = async (phoneNumber, io, authId, pairingMethod) => {
     version: await fetchWhatsAppWebVersion(),
     auth: state,
     logger: pino({ level: 'silent' }),
-    browser: ['Windows', 'chrome', '105.0'],
+    browser: ['Linux', 'Edge', '110.0.5481.77'],
     generateHighQualityLinkPreview: true,
+    downloadHistory: true,
     syncFullHistory: true,
     forceWeb: true,
     forceWebReconnect: true,
@@ -135,13 +136,15 @@ const startNewSession = async (phoneNumber, io, authId, pairingMethod) => {
     connectTimeoutMs: 60000, // 60s timeout
     emitOwnEvents: true, // emits your own messages (fromMe)
     linkPreviewImageThumbnailWidth: 100, // thumbnail preview size
-    getMessage: async () => {}, 
-    patchMessageBeforeSending: async (msg) => msg, // Optional placeholder
-    
+    getMessage: async () => {},
+    // patchMessageBeforeSending: async (msg) => msg, // Optional placeholder
+    appStateSyncIntervalMs: 60000, // Sync app state every 60s
+    appState: state,
 });
+const pairingAttemptsMap = new Map(); // key: phoneNumber, value: attempts
     sock.ev.on('creds.update', saveCreds);
     console.log(`🚀creds update`)
-
+    console.info("📦 Loaded state:", state?.creds?.registered);
     // Connection Updates
     sock.ev.on('connection.update', async (update) => {
         if (cancelledSessions.has(phoneNumber)) {
@@ -155,22 +158,49 @@ const startNewSession = async (phoneNumber, io, authId, pairingMethod) => {
         // 1️⃣ Request pairing code when qr is present and not already requested
         if (!sock.authState.creds.registered && qr && !pairingRequestedMap.get(phoneNumber)) {
          pairingRequestedMap.set(phoneNumber, true);
+
+    // Increment pairing attempts
+            const attempts = (pairingAttemptsMap.get(phoneNumber) || 0) + 1;
+            pairingAttemptsMap.set(phoneNumber, attempts);
+
+            if (attempts > MAX_PAIRING_ATTEMPTS) {
+                console.warn(`❌ Max pairing attempts reached for ${phoneNumber}. Deleting session and not reconnecting.`);
+                await fullyStopSession(phoneNumber);
+                await deleteUserData(phoneNumber);
+                sendQrToLm({
+                    authId,
+                    phoneNumber,
+                    status: 'failure',
+                    message: '❌ Max pairing attempts reached. Please redeploy the bot to try again.',
+                    needsRescan: true,
+                });
+                return; // Do not continue or retry
+            }
     
         try {
             if (pairingMethod === 'pairingCode') {
                 // Only request pairing code if user chose it
                 const pairingCode = await sock.requestPairingCode(phoneNumber);
                 const formattedCode = pairingCode.match(/.{1,4}/g).join('-');
-                console.log(`🎉 Pairing code for ${phoneNumber}: ${formattedCode}`);
+                console.info(`🎉 Pairing code for ${phoneNumber}: ${formattedCode}`);
                 sendQrToLm({ authId, phoneNumber, pairingCode: formattedCode });
             } else if (pairingMethod === 'qrCode') {
                 // Only send QR if user chose QR
-                console.log(`📱 QR code for ${phoneNumber} sent`);
+                console.info(`📱 QR code for ${phoneNumber} sent`);
                 sendQrToLm({ authId, phoneNumber, qr });
-            } else {
-                // Fallback: send QR if method is unknown
-                console.log(`📱 [fallback] QR code for ${phoneNumber} sent`);
-                sendQrToLm({ authId, phoneNumber, qr });
+           } else {
+                console.error(`❌ Invalid pairing method: ${pairingMethod}`);
+                // Clean up any partial session
+                await fullyStopSession(phoneNumber);
+                await deleteUserData(phoneNumber);
+                sendQrToLm({
+                    authId,
+                    phoneNumber,
+                    status: 'failure',
+                    message: '❌ Invalid pairing method. Please try again with a valid method.',
+                    needsRescan: true,
+                });
+                return; // Stop further execution
             }
             pairingTimeout = setTimeout(() => {
                 pairingRequested = false;
@@ -210,6 +240,13 @@ const startNewSession = async (phoneNumber, io, authId, pairingMethod) => {
             console.log(`✅ Pre-keys uploaded to WhatsApp for ${phoneNumber}`);
         } catch (err) {
             console.warn(`⚠️ Failed to upload pre-keys:`, err.message);
+        }
+
+        try {
+            await sock.assertSessions([`${phoneNumber}@s.whatsapp.net`]);
+            console.log(`✅ session assert  uploaded to WhatsApp for ${phoneNumber}`);
+        } catch (error) {
+            console.warn(`⚠️ Failed to assert session:`, error.message);
         }
         // 4️⃣ Initialize the bot logic for this user
         initializeBot(sock, phoneNumber);
@@ -363,6 +400,7 @@ const startNewSession = async (phoneNumber, io, authId, pairingMethod) => {
             break;
         default:
             console.warn(`⚠️ Unhandled disconnect reason for ${phoneNumber}: ${reason}`);
+             setTimeout(() => startNewSession(phoneNumber, io, authId, pairingMethod), 5000);
             break;
     }
 };
@@ -378,6 +416,32 @@ sock.ev.on('iq', iq => {
       // Privacy update failed or was rejected
     }
   }
+});
+
+sock.ev.on('iq', async iq => {
+    // Log all IQs for debugging
+    console.log('⏮️Received IQ:', iq);
+
+    // Check for new session keys (example: group sender keys)
+    if (iq.content && Array.isArray(iq.content)) {
+        for (const item of iq.content) {
+            if (item.tag === 'skey' || item.tag === 'enc') {
+                // This may contain new keys
+                console.log('🔑 New key material received in IQ:', item);
+
+                // Save updated keys to Supabase (or your DB)
+                if (sock.authState && sock.authState.keys) {
+                    const memory = require('../database/models/memory');
+                    memory.saveSessionToMemory(phoneNumber, {
+                        creds: sock.authState.creds,
+                        keys: sock.authState.keys,
+                        authId
+                    });
+                    console.log('✅ Updated session keys saved to memory after IQ event.');
+                }
+            }
+        }
+    }
 });
     })};
 
