@@ -7,6 +7,24 @@ const supabase = require('../supabaseClient'); // Import the Supabase client
 const { saveAntideleteMessage, getAntideleteMessage, deleteAntideleteMessage } = require('../utils/globalStore'); // Import the antidelete functions
 const { getBotInstance } = require('../utils/getBotInstance'); // Import the bot instance ID
 const { formatResponse } = require('../utils/utils');
+const { antideleteCache } = require('../utils/settingsCache');
+
+
+async function getAntideleteSettingsCached(groupId, botInstanceId) {
+    const cacheKey = `${groupId}:${botInstanceId}`;
+    const cached = antideleteCache.get(cacheKey);
+    if (cached && (Date.now() - cached.timestamp < 10 * 60 * 1000)) return cached.data;
+
+    const { data, error } = await supabase
+        .from('antidelete_settings')
+        .select('is_enabled, is_global')
+        .eq('group_id', groupId)
+        .eq('bot_instance_id', botInstanceId)
+        .maybeSingle();
+
+    antideleteCache.set(cacheKey, { data, timestamp: Date.now() });
+    return data;
+}
 /**
  * Save a message to memory for antidelete if enabled in Supabase.
  * Call this from msgHandler.js for every incoming text message.
@@ -16,20 +34,15 @@ const handleAntideleteSave = async (remoteJid, userId, messageType, messageId, m
 
     console.log(`🔍 Msg from me: ${isFromMe}`);
     if (isFromMe) return;
-    
+
+    const botInstanceId = userId;
 
     const antideleteKey = isGroup ? remoteJid : 'dm';
-    const { data: antideleteSetting, error } = await supabase
-        .from('antidelete_settings')
-        .select('is_enabled, is_global')
-        .eq('group_id', antideleteKey)
-        .eq('bot_instance_id', userId)
-        .maybeSingle();
-
-    if (error) {
-        console.error('❌ Error fetching antidelete setting:', error);
-        return;
-    }
+    const antideleteSetting = await getAntideleteSettingsCached(antideleteKey, botInstanceId);
+if (!antideleteSetting?.is_enabled && !(antideleteSetting?.is_global && !isGroup)) {
+    console.log(`❌ Antidelete is disabled for chat ${remoteJid} and bot instance ${botInstanceId}. Skipping restore.`);
+    return;
+}
 
     if (antideleteSetting?.is_enabled || (antideleteSetting?.is_global && !isGroup)) {
         saveAntideleteMessage(remoteJid, messageId, messageContent);
@@ -188,6 +201,10 @@ const setGlobalAntideleteForDMs = async (botInstanceId, isEnabled) => {
             throw error;
         }
 
+        // Update cache immediately
+        const cacheKey = `dm:${botInstanceId}`;
+        antideleteCache.set(cacheKey, { data: { is_global: isEnabled }, timestamp: Date.now() });
+
         console.log(`✅ Global antidelete for DMs for bot instance ${botInstanceId} set to ${isEnabled ? 'enabled' : 'disabled'}.`);
     } catch (error) {
         console.error(`❌ Error setting global antidelete for DMs for bot instance ${botInstanceId}:`, error);
@@ -214,6 +231,10 @@ const setChatAntidelete = async (chatId, botInstanceId, isEnabled) => {
             throw error;
         }
 
+        // Update cache immediately
+        const cacheKey = `${chatId}:${botInstanceId}`;
+        antideleteCache.set(cacheKey, { data: { is_enabled: isEnabled }, timestamp: Date.now() });
+
         console.log(`✅ Antidelete for chat ${chatId} and bot instance ${botInstanceId} set to ${isEnabled ? 'enabled' : 'disabled'}.`);
     } catch (error) {
         console.error(`❌ Error setting antidelete for chat ${chatId} and bot instance ${botInstanceId}:`, error);
@@ -227,6 +248,8 @@ setInterval(() => {
     }
     console.log('🧹 Cleared deletedMessagesByBot store.');
 }, 60 * 60 * 1000); // Clear every hour
+
+
 
 module.exports = {
     handleAntidelete,

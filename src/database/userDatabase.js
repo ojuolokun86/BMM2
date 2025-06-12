@@ -8,6 +8,7 @@ const { botInstances } = require('../utils/globalStore'); // Import the bot inst
 const { deleteUserMetrics } = require('./models/metrics'); // Import the in-memory metrics map
 const { sessionTimers } = require('../utils/globalStore'); // Import your timers map
 const globalStore = require('../utils/globalStore');
+const { subscriptionLevelCache, userCache, groupModeCache, statusSettingsCache} = require('../utils/settingsCache');
 
 /**
  * Add or update a user in the `users` table in Supabase.
@@ -59,6 +60,12 @@ const addUser = async (userId, name, lid, id, dateCreated, authId, platform) => 
         if (error) {
             console.error(`❌ Error saving user ${userId} to the database:`, error);
             throw error;
+        }
+
+            if (!error) {
+            // Fetch the updated user and update the cache
+            const updatedUser = await getUser(userId);
+            if (updatedUser) userCache.set(userId, { data: updatedUser, timestamp: Date.now() });
         }
 
         console.log(`✅ User ${userId} saved to the database.`);
@@ -169,6 +176,9 @@ const getAllUsers = async () => {
  * @returns {Promise<object>} - The result of the database operation.
  */
 const deleteUser = async (userId) => {
+
+    userCache.delete(userId);
+    console.log(`🗑️ Deleting user ${userId} from the database...`);
     const { data, error } = await supabase
         .from('users') // Replace 'users' with your actual table name
         .delete()
@@ -254,6 +264,10 @@ const saveGroupMode = async (userId, groupId, mode) => {
         if (error) {
             console.error(`❌ Error saving group mode for user ${userId} in group ${groupId}:`, error);
             throw error;
+        }
+
+        if (!error) {
+            groupModeCache.set(`${userId}:${groupId}`, { data: mode, timestamp: Date.now() });
         }
 
         console.log(`✅ Group mode for user ${userId} in group ${groupId} saved to database.`);
@@ -424,11 +438,14 @@ function getPossibleUserKeys(phoneNumber) {
 
 
 const deleteUserData = async (phoneNumber) => {
+    const userId = phoneNumber
     try {
         console.log(`🗑️ Deleting all data for user: ${phoneNumber}`);
 
         // Get all possible keys for this user
         const keys = getPossibleUserKeys(phoneNumber);
+
+        userCache.delete(userId);
 
         // 0. Stop and clear all timers for this user
         if (sessionTimers) {
@@ -459,6 +476,10 @@ const deleteUserData = async (phoneNumber) => {
                 globalStore.deletedUsers[key] = true;
             }
         }
+
+        if (globalStore.deletedUsers) {
+                 delete globalStore.deletedUsers[phoneNumber];
+            }
 
         // 1. Stop and remove the bot instance for all possible keys
         for (const key of keys) {
@@ -585,6 +606,72 @@ const getUserSubscriptionLevel = async (authId) => {
     }
 };
 
+async function getUserSubscriptionLevelCached(authId) {
+    if (!authId) return 'free';
+    const cached = subscriptionLevelCache.get(authId);
+    if (cached && (Date.now() - cached.timestamp < 10 * 60 * 1000)) {
+        return cached.data;
+    }
+    // Fallback to DB
+    try {
+        const { data: token, error } = await supabase
+            .from('subscription_tokens')
+            .select('subscription_level')
+            .eq('user_auth_id', authId)
+            .single();
+        if (error) {
+            console.error('❌ Error fetching subscription level:', error.message);
+            subscriptionLevelCache.set(authId, { data: 'free', timestamp: Date.now() });
+            return 'free';
+        }
+        const level = token && token.subscription_level ? token.subscription_level : 'free';
+        subscriptionLevelCache.set(authId, { data: level, timestamp: Date.now() });
+        return level;
+    } catch (err) {
+        console.error('❌ Exception fetching subscription level:', err.message);
+        subscriptionLevelCache.set(authId, { data: 'free', timestamp: Date.now() });
+        return 'free';
+    }
+}
+
+async function getUserCached(userId, lid, id, authId) {
+    const cacheKey = userId;
+    const cached = userCache.get(cacheKey);
+    if (cached && (Date.now() - cached.timestamp < 10 * 60 * 1000)) {
+        return cached.data;
+    }
+    const data = await getUser(userId, lid, id, authId);
+    if (data) userCache.set(cacheKey, { data, timestamp: Date.now() });
+    return data;
+}
+
+async function getGroupModeCached(userId, groupId) {
+    const cacheKey = `${userId}:${groupId}`;
+    const cached = groupModeCache.get(cacheKey);
+    if (cached && (Date.now() - cached.timestamp < 10 * 60 * 1000)) {
+        return cached.data;
+    }
+    const mode = await getGroupModeFromDatabase(userId, groupId);
+    if (mode) groupModeCache.set(cacheKey, { data: mode, timestamp: Date.now() });
+    return mode;
+}
+
+async function getUserStatusSettingsCached(userId) {
+    const cached = statusSettingsCache.get(userId);
+    if (cached && (Date.now() - cached.timestamp < 10 * 60 * 1000)) {
+        return cached.data;
+    }
+    const settings = await getUserStatusSettings(userId);
+    statusSettingsCache.set(userId, { data: settings, timestamp: Date.now() });
+    return settings;
+}
+
+async function updateUserStatusSettingsCached(userId, settings) {
+    await updateUserStatusSettings(userId, settings);
+    // Update cache immediately
+    const merged = { ...(await getUserStatusSettingsCached(userId)), ...settings };
+    statusSettingsCache.set(userId, { data: merged, timestamp: Date.now() });
+}
 
 module.exports = {
     getUser,
@@ -603,4 +690,9 @@ module.exports = {
     deleteAllUsers,
     getUserSubscriptionLevel,
     getUserPlatform,
+    getUserSubscriptionLevelCached,
+    getUserCached,
+    getGroupModeCached,
+    getUserStatusSettingsCached,
+    updateUserStatusSettingsCached,
 };

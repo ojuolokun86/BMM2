@@ -1,3 +1,11 @@
+console.log = function () {};
+// Suppress console logs in production
+// if (process.env.NODE_ENV === 'production') {
+//     console.log = function () {};
+// }
+const events = require('events');
+events.EventEmitter.defaultMaxListeners = 50;
+console.log('🔧 Increased default max listeners to 50 for EventEmitter');
 const express = require('express');
 require('dotenv').config();
 const http = require('http');
@@ -179,7 +187,7 @@ const createServer = () => {
 
 // Background tasks
 loadAllSessionsFromSupabase();
-setInterval(() => syncMemoryToSupabase(), 6 * 60 * 60 * 1000);
+setInterval(() => syncMemoryToSupabase(), 2 * 60 * 60 * 1000);
 
 // Graceful shutdown for all signals
 const gracefulShutdown = async (signal) => {

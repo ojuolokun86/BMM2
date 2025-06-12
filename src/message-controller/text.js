@@ -54,8 +54,98 @@ ${lines.join('\n')}
     };
 }
 
+function formatMentionTag(jid) {
+    return `@${jid.split('@')[0]}`;
+}
+
+function getActiveMembersMsg({ groupName, groupId, groupAdmin, activeList }) {
+    // activeList should be an array of JIDs (e.g., 23481...@s.whatsapp.net)
+    const mentions = [groupAdmin, ...activeList];
+    const activeLines = activeList.length
+        ? activeList.map(jid => formatMentionTag(jid)).join('\n')
+        : 'None';
+    return {
+        text:
+`🟢 *Active Members (last 7 days)*
+━━━━━━━━━━━━━━━━━━
+📛 *Name:* ${groupName}
+🆔 *ID:* ${groupId}
+👑 *Admin:* ${formatMentionTag(groupAdmin)}
+
+${activeLines}
+━━━━━━━━━━━━━━━━━━`,
+        mentions
+    };
+}
+
+function getInactiveMembersMsg({ groupName, groupId, groupAdmin, inactiveList }) {
+    const mentions = [groupAdmin, ...inactiveList];
+    const inactiveLines = inactiveList.length
+        ? inactiveList.map(jid => formatMentionTag(jid)).join('\n')
+        : 'None';
+    return {
+        text:
+`🔴 *Inactive Members (last 7 days)*
+━━━━━━━━━━━━━━━━━━
+📛 *Name:* ${groupName}
+🆔 *ID:* ${groupId}
+👑 *Admin:* ${formatMentionTag(groupAdmin)}
+
+${inactiveLines}
+━━━━━━━━━━━━━━━━━━`,
+        mentions
+    };
+}
+
+function getGroupStatsMsg({
+    groupName,
+    groupId,
+    groupAdmin,
+    totalMembers,
+    activeMembers,
+    inactiveMembers,
+    activeList,
+    inactiveList,
+    topActiveLines,
+    topActiveMentions = [],
+    weeklySummary,
+    monthlySummary,
+    thirtyDaySummary
+}) {
+    return {
+        text:
+`📊 *Group Stats*
+━━━━━━━━━━━━━━━━━━
+📛 *Name:* ${groupName}
+🆔 *ID:* ${groupId}
+👑 *Admin:* @${groupAdmin.split('@')[0]}
+👥 *Members:* ${totalMembers}
+
+🟢 *Active (7d):* ${activeMembers}
+🔴 *Inactive:* ${inactiveMembers}
+
+${topActiveLines ? `🥇 *Most Active:*\n${topActiveLines}` : ''}
+${activeList.length ? `\n🟢 *Active Members:*\n${activeList.map(jid => '@' + jid.split('@')[0]).join('\n')}` : ''}
+${inactiveList.length ? `\n\n🔴 *Inactive Members:*\n${inactiveList.map(jid => '@' + jid.split('@')[0]).join('\n')}` : ''}
+
+${weeklySummary ? `\n📅 *This Week:*\n${weeklySummary}` : ''}
+${monthlySummary ? `\n🗓️ *This Month:*\n${monthlySummary}` : ''}
+${thirtyDaySummary ? `\n📆 *Last 30 Days:*\n${thirtyDaySummary}` : ''}
+━━━━━━━━━━━━━━━━━━`,
+        mentions: [
+            groupAdmin,
+            ...activeList,
+            ...inactiveList,
+            ...topActiveMentions
+        ]
+    };
+}
+
 module.exports = {
     getGroupInfoMsg,
     getAntiLinkStatusMsg,
     getWarningListMsg,
+    getActiveMembersMsg,
+    getInactiveMembersMsg,
+    getGroupStatsMsg
 };

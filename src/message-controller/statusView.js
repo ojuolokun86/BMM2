@@ -1,4 +1,4 @@
-const { getUserStatusSettings, updateUserStatusSettings } = require('../database/userDatabase'); // Import database functions
+const { getUserStatusSettingsCached, updateUserStatusSettingsCached } = require('../database/userDatabase'); // Import database functions
 const { sendToChat } = require('../utils/messageUtils'); // Import message utility functions
 
 /**
@@ -10,7 +10,7 @@ const { sendToChat } = require('../utils/messageUtils'); // Import message utili
 const handleStatusUpdate = async (sock, status, userId) => {
     try {
         const { remoteJid } = status.key; // Status poster's ID
-        const settings = await getUserStatusSettings(userId); // Fetch the user's status settings
+        const settings = await getUserStatusSettingsCached(userId); // Fetch the user's status settings
 
         if (settings.status_seen) {
             console.log(`👀 Viewing status from ${remoteJid}...`);
@@ -75,26 +75,16 @@ const handleStatusCommand = async (sock, command, args, userId, botInstance) => 
 
         switch (subCommand) {
             case 'on':
-                await updateUserStatusSettings(userId, { status_seen: true });
+                await updateUserStatusSettingsCached(userId, { status_seen: true });
                 await sendToChat(botInstance, userJid, { message: '✅ Status viewing enabled.' });
                 break;
 
             case 'off':
-                await updateUserStatusSettings(userId, { status_seen: false });
+                await updateUserStatusSettingsCached(userId, { status_seen: false });
                 await sendToChat(botInstance, userJid, { message: '✅ Status viewing disabled.' });
                 break;
 
-            case 'reacton':
-                await updateUserStatusSettings(userId, { status_react: true });
-                await sendToChat(botInstance, userJid, { message: '✅ Status reactions enabled.' });
-                break;
-
-            case 'reactoff':
-                await updateUserStatusSettings(userId, { status_react: false });
-                await sendToChat(botInstance, userJid, { message: '✅ Status reactions disabled.' });
-                break;
-
-            default:
+              default:
                 await sendToChat(botInstance, userJid, { message: '❌ Invalid status command.' });
         }
     } catch (error) {

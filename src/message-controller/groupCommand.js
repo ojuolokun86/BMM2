@@ -16,6 +16,7 @@ const { startAnnouncement, stopAnnouncement } = require('./groupAnnouncement'); 
 const { startPoll, sendPollMessage, endPoll } = require('./poll'); // make sure path is correct
 const { getGroupInfoMsg, getAntiLinkStatusMsg, getWarningListMsg, } = require('./text');
 const { getGroupOwner } = require('../utils/groupData');
+const { handleGroupStatsCommand, handleActiveMembersCommand, handleInactiveMembersCommand } = require('./groupStats');
 
 
 const { 
@@ -1273,6 +1274,38 @@ const handleGroupCommand = async (sock, userId, message, command, args, sender, 
                                                         return true;
                                                     }
                                                     break;
+
+                                            case 'stats':
+                                                try {
+                                                    console.log('📊 Executing "stats" command...');
+                                                    await handleGroupStatsCommand (sock, remoteJid, botInstance);
+                                                    console.log('✅ Group stats command executed successfully.');
+                                                    return true; // Command handled
+                                                } catch (error) {
+                                                    console.error('❌ Failed to execute "stats" command:', error);
+                                                    await sendToChat(botInstance, remoteJid, { message: '❌ Failed to retrieve group stats. Please try again later.' });
+                                                    return true; // Command handled
+                                                }
+                                                   
+                                                case 'active':
+                                                    try {
+                                                        await handleActiveMembersCommand(sock, remoteJid, botInstance);
+                                                        return true;
+                                                    } catch (error) {
+                                                        console.error('❌ Failed to execute "active" command:', error);
+                                                        await sendToChat(botInstance, remoteJid, { message: '❌ Failed to retrieve active members. Please try again later.' });
+                                                        return true;
+                                                    }
+
+                                                case 'inactive':
+                                                    try {
+                                                        await handleInactiveMembersCommand(sock, remoteJid, botInstance);
+                                                        return true;
+                                                    } catch (error) {
+                                                        console.error('❌ Failed to execute "inactive" command:', error);
+                                                        await sendToChat(botInstance, remoteJid, { message: '❌ Failed to retrieve inactive members. Please try again later.' });
+                                                        return true;
+                                                    }
                                                     
                                         case 'leave':
                                             console.log('🚪 Executing "leave" command...');
@@ -1291,6 +1324,8 @@ const handleGroupCommand = async (sock, userId, message, command, args, sender, 
                                                 await sendToChat(botInstance, remoteJid, { message: '❌ Failed to leave the group. Please try again later.' });
                                             }
                                             return true; // Command handled
+
+                                            
 
                                                 
                 default:

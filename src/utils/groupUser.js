@@ -34,11 +34,25 @@ const handleNewUserJoin = async (sock, groupId, userJid, botInstance) => {
         const groupDesc = groupMetadata.desc || "No description provided.";
 
         // Determine the welcome message
-        let welcomeMessage = settings.welcome_message;
-        if (!welcomeMessage) {
-            welcomeMessage = `🤖 *Techitoon Bot*\n\n📢 Welcome to *${groupName}*, @${userJid.split('@')[0]}!\n\nWe're excited to have you onboard. Please take a moment to review the group rules and description below to ensure a great experience for everyone.\n\n📄 *Group Description:*\n${groupDesc}\n\nIf you have any questions or need assistance, feel free to ask. Let's make this group engaging and productive! 🚀`;
-        }
+       let welcomeMessage;
+        const username = userJid.split('@')[0];
 
+      if (settings.welcome_message && settings.welcome_message.trim()) {
+    // Creative template with user's custom message
+    welcomeMessage =
+        `👋 *Hey @${username}!* Welcome to *${groupName}*!\n\n` +
+        `💬 ${settings.welcome_message}\n\n` +
+        `📄 *Group Description:*\n${groupDesc}\n\n` +
+        `✨ We're excited to have you here. Please introduce yourself and enjoy your stay! 🚀`;
+} else {
+    // Default template
+    welcomeMessage =
+        `🤖 *Techitoon Bot*\n\n` +
+        `📢 Welcome to *${groupName}*, @${username}!\n\n` +
+        `We're excited to have you onboard. Please take a moment to review the group rules and description below to ensure a great experience for everyone.\n\n` +
+        `📄 *Group Description:*\n${groupDesc}\n\n` +
+        `If you have any questions or need assistance, feel free to ask. Let's make this group engaging and productive! 🚀`;
+}
         // Send the welcome message
         await sendToChat(botInstance, groupId, {
             message: welcomeMessage,

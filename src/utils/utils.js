@@ -1,4 +1,5 @@
 const supabase = require('../supabaseClient'); // Import Supabase client
+const { formatResponseCache } = require('./settingsCache');
 
 /**
  * Get the format_response setting for a user.
@@ -42,6 +43,8 @@ const updateFormatResponseSetting = async (userId, formatResponse) => {
         if (error) {
             console.error(`❌ Failed to update format_response setting for user ${normalizedUserId}:`, error);
         } else {
+            // Update cache immediately
+            formatResponseCache.set(normalizedUserId, { data: formatResponse, timestamp: Date.now() });
             console.log(`✅ Updated format_response setting for user ${normalizedUserId} to ${formatResponse}`);
         }
     } catch (error) {
@@ -49,7 +52,21 @@ const updateFormatResponseSetting = async (userId, formatResponse) => {
     }
 };
 
-
+/**
+ * Get the cached format_response setting for a user, or fetch it from the database if not cached.
+ * @param {string} userId - The user's ID.
+ * @returns {Promise<boolean>} - The cached or fetched format_response setting (true or false).
+ */
+const getFormatResponseSettingCached = async (userId) => {
+    const cacheKey = userId;
+    const cached = formatResponseCache.get(cacheKey);
+    if (cached && (Date.now() - cached.timestamp < 10 * 60 * 1000)) {
+        return cached.data;
+    }
+    const value = await getFormatResponseSetting(userId);
+    formatResponseCache.set(cacheKey, { data: value, timestamp: Date.now() });
+    return value;
+};
 
 /**
  * Format a response with a header and footer if the setting is enabled.
@@ -64,7 +81,7 @@ function normalizeUserId(userId) {
 const formatResponse = async (botInstance, message) => {
     const userIdRaw = botInstance?.user?.id || botInstance?.sock?.user?.id;
     const userId = normalizeUserId(userIdRaw);
-    const formatResponse = await getFormatResponseSetting(userId);
+    const formatResponse = await getFormatResponseSettingCached(userId); // Use cached version
     if (!formatResponse) {
         return message;
     }
@@ -86,4 +103,5 @@ module.exports = {
     updateFormatResponseSetting,
     formatResponse,
     normalizeUserId,
+    getFormatResponseSettingCached,
 };

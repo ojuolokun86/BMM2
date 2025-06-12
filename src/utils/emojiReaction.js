@@ -37,6 +37,9 @@ const commandEmojis = {
     formatrespond: '🗣️',
     dnd: '📞',
     upload: '📤',
+    stats: '📈',
+    active: '🟢',
+    inactive: '🔴',
 
     // Utility Commands
     delete: '🗑️',

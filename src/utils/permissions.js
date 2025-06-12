@@ -1,5 +1,5 @@
 const { normalizeUserId } = require('./normalizeUserId');
-const { getGroupMode } = require('../bot/groupModeManager');
+const { getGroupModeCached } = require('../bot/groupModeManager');
 const { getGroupAdmins } = require('./groupData'); // Import the group data functions
 
 /**
@@ -69,7 +69,8 @@ const isGroupAdmin = async (sock, remoteJid, sender) => {
  */
 const isAllowedByGroupMode = async (sock, remoteJid, sender, botLid) => {
     try {
-        const groupMode = await getGroupMode(remoteJid); // Fetch the group mode
+        const groupMode = await getGroupModeCached(remoteJid); // Fetch the group mode
+        console.log(`🔍 Group Mode for ${remoteJid}: ${groupMode}`);
 
         const normalizedSender = normalizeUserId(sender); // Normalize the sender's ID
         const isOwner = isBotOwner(normalizedSender, sock); // Check if the sender is the bot owner

@@ -185,40 +185,29 @@ const loadAllSessionsFromSupabase = async () => {
         const validSessions = data
             .map((session) => {
                 try {
-                    if (!session.phoneNumber || !session.creds || !session.keys) {
-                        console.warn('⚠️ Skipping invalid session from Supabase:', session);
-                        return null;
-                    }
-
+                    if (!session.phoneNumber || !session.creds || !session.keys) return null;
                     const creds = JSON.parse(session.creds, BufferJSON.reviver);
                     const keys = JSON.parse(session.keys, BufferJSON.reviver);
-
-                    return {
-                        phoneNumber: session.phoneNumber,
-                        authId: session.authId,
-                        creds,
-                        keys,
-                    };
-                } catch (err) {
-                    console.warn(`⚠️ Skipping session with invalid JSON for ${session.phoneNumber}:`, err.message);
-                    return null;
-                }
+                    return { phoneNumber: session.phoneNumber, authId: session.authId, creds, keys };
+                } catch { return null; }
             })
             .filter(Boolean);
+
         memory.loadSessionsToMemory(validSessions);
         console.log(`✅ Loaded ${validSessions.length} valid sessions into memory.`);
-  // Start/restart the WhatsApp bot for each session
+
+        // Start all sessions in parallel for speed
         const { getSocketInstance } = require('../../server/socket');
         const io = getSocketInstance();
         const { startNewSession } = require('../../users/userSession');
-        for (const session of validSessions) {
-    if (!botInstances[session.phoneNumber]) {
-        console.log(`🔄 Starting session for ${session.phoneNumber}`);
-        await startNewSession(session.phoneNumber, io, session.authId);
-    } else {
-        console.log(`🟢 Session already running for ${session.phoneNumber}, skipping start.`);
-    }
-    }
+        await Promise.all(validSessions.map(async (session) => {
+            if (botInstances[session.phoneNumber]) return;
+            try {
+                await startNewSession(session.phoneNumber, io, session.authId);
+            } catch (err) {
+                console.error(`❌ Failed to start session for ${session.phoneNumber}:`, err.message);
+            }
+        }));
     } catch (error) {
         console.error('❌ Failed to load sessions from Supabase:', error.message);
     }

@@ -45,7 +45,13 @@ const getSettingsMenu = (prefix = '.') => `
 ┃ 👁️ *${prefix}seen off* - Disable seen status
 ┃ 🤖 *${prefix}logout* - logout from Bot
 ┃ 🗣️ *${prefix}formatrespond* - format response from Bot
-┃ 📞 *${prefix}DND* on/off - Do Not Disturb (reject calls)
+┃ 📞 *${prefix}dnd mode* - Show DND modes
+┃ 📞 *${prefix}dnd chmod <code>* - Change DND mode
+┃ 📞 *${prefix}dnd w add/remove <number>* - Add/remove number to whitelist
+┃ 📞 *${prefix}dnd w* - View whitelist
+┃ 📞 *${prefix}dnd b add/remove <number>* - Add/remove number to blacklist
+┃ 📞 *${prefix}dnd b* - View blacklist
+┃ 📞 *${prefix}dnd contacts on/off* - Allow only contacts to call
 ╰───────────────────────╯
 `;
 
@@ -100,6 +106,9 @@ const getGroupMenu = (prefix = '.') => `
 ┃ 🚫 *${prefix}block* <number> - Block a user (owner only)  
 ┃ ✅ *${prefix}unblock* <number> - Unblock a user (owner only) 
 ┃ 📢 *${prefix}admin* - Tag all admins in the group  
+┃ 📈 *${prefix}stats* - Show group stats  
+┃ 🟢 *${prefix}active* - List active members  
+┃ 🔴 *${prefix}inactive* - List inactive members  
 ╰───────────────────────╯
 `;
 
