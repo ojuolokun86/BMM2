@@ -25,6 +25,7 @@ const getAnalyticsData = (authId) => {
  * @param {Object} data - Analytics data to add.
  */
 const addAnalyticsData = (authId, data) => {
+    console.log(`📊 Adding analytics data for authId: ${authId}`, data);
     if (!analyticsData[authId]) {
         analyticsData[authId] = [];
     }

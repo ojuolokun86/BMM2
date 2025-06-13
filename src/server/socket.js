@@ -2,7 +2,7 @@ const { Server } = require('socket.io');
 const { getAllUserMetrics } = require('../database/models/metrics');
 const cors = require('cors');
 const { botInstances, lmSocketInstances, } = require('../utils/globalStore'); // Assuming this is where your bot instances are managed
-
+const { getAnalyticsData } = require('./info'); 
 let io;
 const userSockets = new Map();
 
@@ -61,7 +61,8 @@ const initializeSocket = (server) => {
         await startNewSession(phoneNumber, io, authId, pairingMethod);
     });
     socket.on('authId', (authId) => {
-      console.log(`📥 Received authId: ${authId} for socket: ${socket.id}`);
+      authId = String(authId);
+      console.log(`😂 Received authId: ${authId} for socket: ${socket.id}`);
       userSockets.set(authId, socket.id);
       socket.join(String(authId)); // Join room for this authId
     });
@@ -73,16 +74,17 @@ const initializeSocket = (server) => {
     console.log(`🗑️ Deployment cancelled and session stopped for ${phoneNumber}`);
 });
 
-    // Live metrics for admin (optional, if needed)
-    const metricsInterval = setInterval(() => {
-      const metrics = getAllUserMetrics();
-      socket.emit('metrics-update', metrics);
-    }, 5000);
 
-    socket.on('disconnect', () => {
-      console.log(`❌ WebSocket disconnected: ${socket.id}`);
-      for (const [authId, id] of userSockets.entries()) {
-        if (id === socket.id) userSockets.delete(authId);
+// Live metrics for admin (optional, if needed)
+const metricsInterval = setInterval(() => {
+  const metrics = getAllUserMetrics();
+  socket.emit('metrics-update', metrics);
+}, 5000);
+
+socket.on('disconnect', () => {
+  console.log(`❌ WebSocket disconnected: ${socket.id}`);
+  for (const [authId, id] of userSockets.entries()) {
+    if (id === socket.id) userSockets.delete(authId);
       }
       clearInterval(metricsInterval);
     });
@@ -91,6 +93,18 @@ const initializeSocket = (server) => {
   return io;
 };
 
+function emitAnalyticsUpdate(authId) {
+  authId = String(authId);
+    const socketId = userSockets.get(authId);
+    console.log('📊 emitAnalyticsUpdate called for:', authId, 'socketId:', socketId);
+    if (socketId && io) {
+        const analytics = getAnalyticsData(authId);
+        console.log('📊 Analytics to emit:', analytics);
+        io.to(socketId).emit('analytics-update', analytics);
+        console.log(`📊 Emitted analytics update for authId: ${authId}`);
+    }
+}
+
 const getSocketInstance = () => {
   if (!io) {
     throw new Error('Socket.io instance not initialized.');
@@ -98,4 +112,4 @@ const getSocketInstance = () => {
   return io;
 };
 
-module.exports = { initializeSocket, getSocketInstance, userSockets, getCorsOptions };
+module.exports = { initializeSocket, getSocketInstance, userSockets, getCorsOptions, emitAnalyticsUpdate };

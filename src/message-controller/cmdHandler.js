@@ -13,6 +13,7 @@ const supabase = require('../supabaseClient'); // Import Supabase client
 const { handleFunCommand } = require('./funCommand'); // Import fun command handler
 const { handleProtectionCommand } = require('./protection'); // Import protection command handler
 const { addAnalyticsData } = require('../server/info'); // Import analytics functions
+const { emitAnalyticsUpdate } = require('../server/socket');
 const {
     getMenuCategories,
     getGeneralMenu,
@@ -235,6 +236,7 @@ case 'menu': {
                         case 'quote':
                         case 'joke':
                          case 'fun':
+                         case 'translate': 
                             console.log(`🎉 Routing "${command}" to funCommand.js...`);
                             const funHandled = await handleFunCommand(sock, message, command, args, userId, remoteJid, botInstance);
                             if (funHandled) {
@@ -322,6 +324,9 @@ case 'menu': {
                 timestamp: new Date().toISOString(),
                 commandProcessingTime: endTime - startTime,
             });
-        }};
+            console.log('📊 Calling emitAnalyticsUpdate with:', authId);
+            emitAnalyticsUpdate(authId);
+        }
+    };
 
 module.exports = { handleCommand };
