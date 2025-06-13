@@ -170,6 +170,13 @@ const createServer = () => {
   res.json({ bots });
 });
 
+function emitAnalyticsUpdate(authId) {
+    const socketId = userSockets.get(authId);
+    if (socketId && io) {
+        const analytics = getAnalyticsData(authId);
+        io.to(socketId).emit('analytics-update', analytics);
+    }
+}
   app.post('/api/admin/reload-sessions', async (req, res) => {
   try {
     await loadAllSessionsFromSupabase();

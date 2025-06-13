@@ -279,19 +279,19 @@ case 'yeet': {
 }
 
 
-           case 'quote': {
-            try {
-                const response = await axios.get('https://api.quotable.io/random');
-                const data = response.data;
-                const quote = data.content;
-                const author = data.author;
-                const formatted = `💬 *Quote of the Moment*\n\n"${quote}"\n\n— _${author}_`;
-                await sendToChat(botInstance, remoteJid, { message: formatted, quotedMessage: message });
-            } catch (err) {
-                await sendToChat(botInstance, remoteJid, { message: '❌ Could not fetch a quote at this time.', quotedMessage: message, err });
-            }
-            return true;
-        }
+         case 'quote': {
+    try {
+        const response = await axios.get('https://zenquotes.io/api/random');
+        const data = response.data[0];
+        const quote = data.q;
+        const author = data.a;
+        const formatted = `💬 *Quote of the Moment*\n\n"${quote}"\n\n— _${author}_`;
+        await sendToChat(botInstance, remoteJid, { message: formatted, quotedMessage: message });
+    } catch (err) {
+        await sendToChat(botInstance, remoteJid, { message: '❌ Could not fetch a quote at this time.', quotedMessage: message });
+    }
+    return true;
+}
 
 
 case 'joke': {
@@ -310,6 +310,40 @@ case 'joke': {
     return true;
 }
 
+case 'translate': {
+    // Usage: .translate <lang> <text>
+    const [targetLang, ...textArr] = args;
+    const text = textArr.join(' ');
+    if (!targetLang || !text) {
+        await sendToChat(botInstance, remoteJid, {
+            message: '❌ Usage: .translate <target_lang_code> <text>\nExample: .translate es Hello world',
+            quotedMessage: message
+        });
+        return true;
+    }
+    try {
+        // Auto-detect source language and translate
+        const resp = await axios.post('https://libretranslate.de/translate', {
+            q: text,
+            source: 'auto',
+            target: targetLang,
+            format: 'text'
+        }, {
+            headers: { accept: 'application/json' }
+        });
+        const translated = resp.data.translatedText;
+        await sendToChat(botInstance, remoteJid, {
+            message: `🌐 *Translated (${targetLang}):*\n${translated}`,
+            quotedMessage: message
+        });
+    } catch (err) {
+        await sendToChat(botInstance, remoteJid, {
+            message: '❌ Could not translate. Please try again or check your language code.',
+            quotedMessage: message
+        });
+    }
+    return true;
+}
 case 'fun': {
     await sendToChat(botInstance, remoteJid, {
         message: getFunMenu(prefix), // Pass the user's prefix if available
