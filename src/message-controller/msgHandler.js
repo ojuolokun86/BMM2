@@ -43,7 +43,6 @@ module.exports = async (sock, message, userId, authId) => {
     const senderId = sender; // Already normalized (no @)
     const isFromBotUser = senderId === botLid || senderId === botId;
     const normalizedSender = sender.split(':')[0].split('@')[0]; // Normalize sender ID without @domain
-
     const botInstanceId = userId; // Use the bot owner's ID as the instance ID
     
 
@@ -206,14 +205,7 @@ if (messageType === 'conversation' || messageType === 'extendedTextMessage') {
     }
      console.log(`[handleMessage] Step 3 (command routing) took ${Date.now() - tStart}ms`);
 
-  
 
-    // Handle anti-link detection
-    if (isGroup) {
-        console.log('🔍 Checking for Anti-Link...');
-        const normalizedUserId = normalizeUserId(userId);
-        await handleAntiLink(sock, message, normalizedUserId);
-    }
 
     
 } catch (error) {

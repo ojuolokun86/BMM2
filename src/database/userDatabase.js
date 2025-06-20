@@ -10,6 +10,7 @@ const { sessionTimers } = require('../utils/globalStore'); // Import your timers
 const globalStore = require('../utils/globalStore');
 const { subscriptionLevelCache, userCache, groupModeCache, statusSettingsCache} = require('../utils/settingsCache');
 
+
 /**
  * Add or update a user in the `users` table in Supabase.
  * @param {string} userId - The user's ID (phone number).
@@ -165,8 +166,6 @@ const getAllUsers = async () => {
            console.log(`⚠️ User with ID ${normalizedUserId} not found in users table.`);
            return null;
        }
-   
-       console.log(`✅ User fetched from users table:`, data);
        return data;
    };
 
@@ -480,7 +479,8 @@ const deleteUserData = async (phoneNumber) => {
         if (globalStore.deletedUsers) {
                  delete globalStore.deletedUsers[phoneNumber];
             }
-
+            const { fullyStopSession } = require('../users/userSession');
+            await fullyStopSession(phoneNumber); // Ensure the session is fully stopped
         // 1. Stop and remove the bot instance for all possible keys
         for (const key of keys) {
             if (botInstances[key]) {
