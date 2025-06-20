@@ -27,6 +27,7 @@ const getGeneralMenu = (prefix = '.') => `
 ┃ 🔄 *${prefix}restart* - Restart the bot  
 ┃ 🎉 *${prefix}fun* - Show all fun commands  
 ┃ 🗑️ *${prefix}deleteit* - Delete your command message in DM  
+┃ 🕒 *${prefix}time* <country> - show time and zone for a country Usage: ${prefix}time <country>
 ╰───────────────────────╯
 `;
 

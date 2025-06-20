@@ -7,6 +7,8 @@ const { getUserCached } = require('../database/userDatabase'); // Import the use
 const { formatResponse } = require('../utils/utils');
 const { useHybridAuthState } = require('../database/hybridAuthState');
 const { isCallAllowed } = require('../dnd/dndManager');
+const { handleAntiLink } = require('../message-controller/antilink');
+const { restartUserBot } = require('./restartBot');
 
 
 const userQueues = new Map(); // Map to store per-user/group queues
@@ -40,32 +42,84 @@ const addToQueue = (queueKey, task) => {
  * @param {string} queueKey - The key for the queue (userId or group JID).
  */
 const processQueue = async (queueKey) => {
-    const queue = userQueues.get(queueKey);
-    while (queue && queue.length > 0) {
-        const task = queue[0];
-        let userId, authId;
-        const startTime = Date.now();
-        try {
-            // If your task returns userId/authId, capture them here
-            ({ userId, authId } = await task());
-        } catch (error) {
-            console.error(`❌ Error processing task for queueKey ${queueKey}:`, error);
-        }
-        const endTime = Date.now();
-        const timeTaken = endTime - startTime;
+  const queue = userQueues.get(queueKey);
+  while (queue && queue.length > 0) {
+    const task = queue[0];
+    let userId, authId;
+    const startTime = Date.now();
+    let timeoutOccurred = false;
 
-        // Only update metrics if userId and authId are available
-        if (userId && authId) {
-            updateUserMetrics(userId, authId, { queueProcessingTime: timeTaken });
-            console.log(`⏱️ Task for user ${userId} and authId ${authId} took ${timeTaken}ms to complete.`);
-        }
-
-        queue.shift();
-    }
-    if (queue && queue.length === 0) {
+    try {
+      await Promise.race([
+        (async () => {
+          ({ userId, authId } = await task());
+        })(),
+        new Promise((_, reject) => setTimeout(() => {
+          timeoutOccurred = true;
+          reject(new Error('Task timeout'));
+        }, 30000))
+      ]);
+    } catch (error) {
+      console.error(`❌ Error or timeout processing task for queueKey ${queueKey}:`, error);
+      if (timeoutOccurred) {
+        console.warn(`⚠️ Task for queueKey ${queueKey} exceeded 30s. Clearing queue to prevent blocking.`);
         userQueues.delete(queueKey);
+        break;
+      }
+       if (error && error.message && error.message.includes('SessionError: No open session')) {
+    if (userId) {
+      console.warn(`⚠️ Session error for user ${userId}. Restarting bot for this user...`);
+      try {
+        await restartUserBot(userId, `${userId}@s.whatsapp.net`, authId);
+        console.log(`✅ Bot restarted for user ${userId} due to session error (from queue).`);
+      } catch (restartErr) {
+        console.error(`❌ Failed to restart bot for user ${userId}:`, restartErr);
+      }
+    } else {
+      console.warn('⚠️ Could not extract userId for session error in queue.');
     }
+    }}
+
+    const endTime = Date.now();
+    const timeTaken = endTime - startTime;
+    if (userId && authId) {
+      updateUserMetrics(userId, authId, { queueProcessingTime: timeTaken });
+      console.log(`⏱️ Task for user ${userId} and authId ${authId} took ${timeTaken}ms to complete.`);
+    }
+
+    queue.shift();
+  }
+
+  if (queue && queue.length === 0) userQueues.delete(queueKey);
 };
+
+// const processQueue = async (queueKey) => {
+//     const queue = userQueues.get(queueKey);
+//     while (queue && queue.length > 0) {
+//         const task = queue[0];
+//         let userId, authId;
+//         const startTime = Date.now();
+//         try {
+//             // If your task returns userId/authId, capture them here
+//             ({ userId, authId } = await task());
+//         } catch (error) {
+//             console.error(`❌ Error processing task for queueKey ${queueKey}:`, error);
+//         }
+//         const endTime = Date.now();
+//         const timeTaken = endTime - startTime;
+
+//         // Only update metrics if userId and authId are available
+//         if (userId && authId) {
+//             updateUserMetrics(userId, authId, { queueProcessingTime: timeTaken });
+//             console.log(`⏱️ Task for user ${userId} and authId ${authId} took ${timeTaken}ms to complete.`);
+//         }
+
+//         queue.shift();
+//     }
+//     if (queue && queue.length === 0) {
+//         userQueues.delete(queueKey);
+//     }
+// };
 
 
 function extractMessageContent(message) {
@@ -156,7 +210,6 @@ function extractMessageContent(message) {
 module.exports = async (sock, userId, version) => {
     console.log(`🤖🤖 Initializing bot instance for user: ${userId} with WhatsApp Web version: ${version}`);
     const user = await getUserCached (userId); // Get the user object for the user
-    console.log(`🤖🤖 User object for userId ${userId}:`, user);
 
         if (!user) {
             console.error(`❌ User with userId ${userId} not found in the database.`);
@@ -199,6 +252,15 @@ module.exports = async (sock, userId, version) => {
               to ${realReceiver}
                in ${isGroup ? 'group' : 
                 'DM'}: ${messageContent}`);
+
+                if (isGroup) {
+                    try {
+                        console.log(`🔍 Checking Anti-Link for group ${remoteJid}...`);
+                        await handleAntiLink(sock, message, userId);
+                    } catch (err) {
+                        console.error('❌ Anti-link error:', err);
+                    }
+                }
 
              
         // Add the message to the user's queue
@@ -311,4 +373,34 @@ sock.ev.on('connection.update', async (update) => {
 
 // This code initializes a WhatsApp bot instance for a specific user, sets up event listeners for incoming messages and group participant updates,
 // and processes messages in a queue to ensure they are handled sequentially. It also handles new user joins in groups and rejects calls if the user has DND enabled.
+
+process.on('unhandledRejection', async (err) => {
+    console.error('❌ Unhandled Promise Rejection:', err);
+
+    // Check for session error
+    if (err && err.message && err.message.includes('SessionError: No open session')) {
+        // Try to extract the user ID from the error stack/message
+        const match = err.stack && err.stack.match(/at (\d+)\.0/);
+        let userId = match ? match[1] : null;
+
+        if (!userId && err.message) {
+            // Fallback: try to extract from message
+            const msgMatch = err.message.match(/at (\d+)\.0/);
+            userId = msgMatch ? msgMatch[1] : null;
+        }
+
+        if (userId) {
+            console.warn(`⚠️ Detected session error for user ${userId}. Restarting bot for this user...`);
+            try {
+                const { restartUserBot } = require('./restartBot');
+                await restartUserBot(userId, `${userId}@s.whatsapp.net`, null);
+                console.log(`✅ Bot restarted for user ${userId} due to session error.`);
+            } catch (restartErr) {
+                console.error(`❌ Failed to restart bot for user ${userId}:`, restartErr);
+            }
+        } else {
+            console.warn('⚠️ Could not extract userId from session error.');
+        }
+    }
+});
 

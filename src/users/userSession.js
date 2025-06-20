@@ -1,4 +1,4 @@
-const { makeWASocket, DisconnectReason, initAuthCreds, BufferJSON, proto, useMultiFileAuthState, } = require('@whiskeysockets/baileys');
+const { makeWASocket, DisconnectReason, initAuthCreds, BufferJSON, proto, useMultiFileAuthState, makeCacheableSignalKeyStore } = require('@whiskeysockets/baileys');
 const { botInstances, restartQueue, intentionalRestarts, lmSocketInstances, } = require('../utils/globalStore'); // Import the global botInstances object
 const initializeBot = require('../bot/bot'); // Import the bot initialization function
 const { addUser, deleteUserData } = require('../database/userDatabase'); // Import the addUser function
@@ -149,7 +149,10 @@ const startNewSession = async (phoneNumber, io, authId, pairingMethod) => {
 
    const sock = makeWASocket({
     version: await fetchWhatsAppWebVersion(),
-    auth: state,
+      auth: {
+            creds: state.creds,
+            keys: makeCacheableSignalKeyStore(state.keys, pino({ level: "fatal" }).child({ level: "fatal" })),
+        },
     logger: pino({ level: 'silent' }),
     browser: ['Linux', 'Edge', '110.0.5481.77'],
     generateHighQualityLinkPreview: true,
@@ -157,7 +160,7 @@ const startNewSession = async (phoneNumber, io, authId, pairingMethod) => {
     syncFullHistory: true,
     forceWeb: true,
     forceWebReconnect: true,
-    markOnlineOnConnect: false,
+    markOnlineOnConnect: true,
     receivedPendingNotifications: true,
     keepAliveIntervalMs: 30000, // Ping WhatsApp every 30s
     connectTimeoutMs: 60000, // 60s timeout
@@ -297,13 +300,6 @@ const pairingAttemptsMap = new Map(); // key: phoneNumber, value: attempts
         case 405: // Custom code for "bad session"
             await fullyStopSession(phoneNumber);
             await deleteUserData(phoneNumber);
-            sendQrToLm({
-                authId,
-                phoneNumber,
-                status: 'failure',
-                message: '❌ Pairing failed or expired. Please redeploy the bot to get a new code.',
-                needsRescan: false,
-            });
             break;
         default:
             console.warn(`⚠️ Unhandled disconnect reason for ${phoneNumber}: ${reason}`);

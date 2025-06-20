@@ -17,6 +17,7 @@ const antideleteStore = new Map(); // { chatId: { messageId: { content, timestam
 const readReceiptSettings = {}; // Store read receipt settings for each chat
 const lmSocketInstances = {}; // Store LM socket instances
 const dndSettings = {};
+const groupKickAllState = {}; 
 
 
 
@@ -129,4 +130,5 @@ module.exports = {
     readReceiptSettings: {} ,
     lmSocketInstances,
     dndSettings,
+    groupKickAllState,
 };

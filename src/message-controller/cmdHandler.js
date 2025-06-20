@@ -169,6 +169,10 @@ case 'menu': {
             case 'stats':
             case 'active':
             case 'inactive':
+            case 'cancelkick':
+            case 'yeskick':
+            case 'canceldestroy':
+            case 'yesdestroy':
                 console.log(`📢 Routing "${command}" to groupCommand.js...`);
                 const handled = await handleGroupCommand(sock, userId, message, command, args, sender, null, botInstance, true);
                 if (handled) {
@@ -190,6 +194,7 @@ case 'menu': {
                 case 'status':
                 case 'view':
                 case 'deleteit':
+                case 'time':
                     console.log(`📜 Routing "${command}" to generalCommand.js...`);
                     const generalHandled = await handleGeneralCommand(sock, message, command, args, userId, remoteJid, botInstance, realSender, botOwnerIds, normalizedUserId, botLid, authId, );
                     if (generalHandled) {
@@ -302,11 +307,27 @@ case 'menu': {
         console.log(`⚙️ Routing "${command}" to settingsCommand.js...`);
         await handleSettingsCommand(sock, message, remoteJid, userId, command, args, botInstance, realSender, normalizedUserId, subscriptionLevel, botLid);
         return; // Exit after handling settings commands
-            default:
-            console.log(`❓ Unknown command: "${command}". Ignoring...`);
-            await sendToChat(botInstance, remoteJid, { message: `🤖I dont know you MR 😂: ${command}` });
-            return; // Exit if the command is unknown
-    }
+          default:
+            const unknownMessages = [
+                `😂 I don’t speak gibberish, boss! *${command}* is not in my dictionary!`,
+                `🧬 ERROR 404: Command *${command}* not found in universe.\nTry *.help* before the system collapses.`,
+                `🤖 I didn’t get that command: *${command}*.\nType *.help* to see what I understand!`,
+                `🛑 Invalid command detected: *${command}*.\nAre you trying to break me or just showing off? 😏`,
+                `🧊 Yo, *${command}* isn’t a valid move.\nTry *.help* to see my power.`,
+                `⚠️ Beep-boop... Command *${command}* is unknown.\nInitiate *.help* to restore logic.`,
+                `😑 *${command}?* Seriously? I don’t even know what that means.\nType *.help* jare.`,
+                `🎮 Cheat code *${command}* is invalid! Try *.help* to unlock real commands.`
+            ];
+
+            // Pick one message at random
+            const randomResponse = unknownMessages[Math.floor(Math.random() * unknownMessages.length)];
+
+            console.log(`❓ Unknown command: "${command}". Sending random response.`);
+            await sendToChat(botInstance, remoteJid, { message: randomResponse });
+            return;
+
+}
+
         } catch (error) {
             console.error(`❌ Error handling command for user ${userId}:`, error);
         } finally {

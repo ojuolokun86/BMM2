@@ -2,83 +2,106 @@ const { getEmojiForCommand } = require('./emojiReaction');
 const { formatResponse } = require('./utils');
 const presenceTimers = {};
 
-/**
- * Centralized function to send messages to a chat.
- */
-const sendToChat = async (botInstance, chatId, options = {}) => {
-    const { message, mentions = [], media, caption, mediaType, quotedMessage } = options;
+const sendToChat = require('./sendToChat');
 
-    try {
-        console.log(`🔍 Debugging "chatId":`, chatId);
-        console.log(`🔍 Message:`, message);
-        console.log(`🔍 Media:`, media);
+// /**
+//  * Centralized function to send messages to a chat.
+//  * If mentions are present, sends as a normal message (so mentions work).
+//  * If no mentions, sends as a forwarded/newsletter message.
+//  * Supports text, media, mentions, and replying to a message.
+//  */
+// const sendToChat = async (botInstance, chatId, options = {}) => {
+//     const { message, mentions = [], media, caption, mediaType, quotedMessage } = options;
 
-        if (!botInstance || typeof botInstance.sendMessage !== 'function') {
-            throw new TypeError('Invalid botInstance: sendMessage is not a function.');
-        }
+//     // Prepare the quoted object (only key and message, as required by Baileys)
+//     let quoted = undefined;
+//     if (quotedMessage && quotedMessage.key) {
+//         quoted = {
+//             key: quotedMessage.key,
+//             ...(quotedMessage.message ? { message: quotedMessage.message } : {})
+//         };
+//     }
 
-        if (!chatId || (!chatId.endsWith('@s.whatsapp.net') && !chatId.endsWith('@g.us'))) {
-            throw new Error(`Invalid chatId: "${chatId}". Must end with "@s.whatsapp.net" or "@g.us".`);
-        }
+//     try {
+//         if (!botInstance || typeof botInstance.sendMessage !== 'function') {
+//             throw new TypeError('Invalid botInstance: sendMessage is not a function.');
+//         }
 
-        if (!message && !media) {
-            throw new Error('Either "message" or "media" must be provided.');
-        }
+//         if (!chatId || (!chatId.endsWith('@s.whatsapp.net') && !chatId.endsWith('@g.us'))) {
+//             throw new Error(`Invalid chatId: "${chatId}". Must end with "@s.whatsapp.net" or "@g.us".`);
+//         }
 
-        // 📷 Media message
-        if (media) {
-            const resolvedType = mediaType || 'image';
-            if (!['image', 'video', 'audio', 'document', 'voice'].includes(resolvedType)) {
-                throw new Error(`Invalid mediaType: ${resolvedType}`);
-            }
+//         if (!message && !media) {
+//             throw new Error('Either "message" or "media" must be provided.');
+//         }
 
-            const mediaPayload = {
-                [resolvedType]: media,
-                caption: caption || '',
-                mentions,
-                ...(resolvedType === 'audio' || resolvedType === 'voice' ? { ptt: resolvedType === 'voice' } : {}),
-                ...(quotedMessage ? { quoted: quotedMessage } : {})
-            };
-            console.log(`🔍 Sending ${resolvedType} to ${chatId} with caption:`, caption);
-            await botInstance.assertSessions([chatId]);
-            console.log(`🔍 Sending msg with session assert to ${chatId} with caption:`);
+//         // Check if mentions are present
+//         const hasMentions = mentions && mentions.length > 0;
 
-            await botInstance.sendMessage(chatId, mediaPayload);
-            console.log(`✅ Sent ${resolvedType} to ${chatId} with caption: ${caption}`);
-        }
+//         // Prepare the outgoing message payload
+//         let payload;
+//         if (media) {
+//             const resolvedType = mediaType || 'image';
+//             if (!['image', 'video', 'audio', 'document', 'voice'].includes(resolvedType)) {
+//                 throw new Error(`Invalid mediaType: ${resolvedType}`);
+//             }
 
-        // 💬 Text message
-        if (message && typeof message === 'string') {
-            const formattedMessage = await formatResponse(botInstance, message);
+//             payload = {
+//                 [resolvedType]: media,
+//                 caption: caption || '',
+//                 mentions,
+//                 ...(resolvedType === 'audio' || resolvedType === 'voice' ? { ptt: resolvedType === 'voice' } : {}),
+//                 ...(quoted ? { quoted } : {})
+//             };
+//             if (!hasMentions) {
+//                 payload.contextInfo = {
+//                     isForwarded: true,
+//                     forwardingScore: 999,
+//                     forwardedNewsletterMessageInfo: {
+//                         newsletterJid: '120363403127154832@newsletter',
+//                         newsletterName: '🤖BMM-BOT🤖',
+//                         serverMessageId: -1
+//                     }
+//                 };
+//             }
+//         } else if (message && typeof message === 'string') {
+//             const formattedMessage = await formatResponse(botInstance, message);
+//             payload = {
+//                 text: formattedMessage,
+//                 mentions,
+//                 ...(quoted ? { quoted } : {})
+//             };
+//             if (!hasMentions) {
+//                 payload.contextInfo = {
+//                     isForwarded: true,
+//                     forwardingScore: 10,
+//                     forwardedNewsletterMessageInfo: {
+//                         newsletterJid: '120363403127154832@newsletter',
+//                         newsletterName: '🤖BMM-BOT🤖',
+//                         serverMessageId: -1
+//                     }
+//                 };
+//             }
+//         } else {
+//             throw new Error('Either "message" or "media" must be provided.');
+//         }
 
-            const textPayload = {
-                text: formattedMessage,
-                mentions,
-                ...(quotedMessage ? { quoted: quotedMessage } : {})
-            };
+//         await botInstance.sendMessage(chatId, payload);
 
-            await botInstance.sendMessage(chatId, textPayload);
-            console.log(`✅ Sent message to ${chatId}: ${formattedMessage}`);
-        }
-
-    } catch (error) {
-        console.error(`❌ Error sending message to ${chatId}:`, error);
-    }
-};
+//     } catch (error) {
+//         console.error(`❌ Error sending message to ${chatId}:`, error);
+//     }
+// };
 
 async function setDynamicPresence(botInstance, chatId, type = 'composing', cooldown = 5000) {
-    // Clear any existing timer for this chat
     if (presenceTimers[chatId]) {
         clearTimeout(presenceTimers[chatId]);
     }
-    // Set the requested presence
     await botInstance.sendPresenceUpdate(type, chatId);
 
-    // Set a timer to reset to unavailable after cooldown
     presenceTimers[chatId] = setTimeout(async () => {
         try {
             await botInstance.sendPresenceUpdate('unavailable', chatId);
-            // Optionally: delete the timer reference
             delete presenceTimers[chatId];
         } catch (err) {
             console.warn(`⚠️ Failed to reset presence for ${chatId}:`, err.message);
@@ -92,18 +115,15 @@ async function setDynamicPresence(botInstance, chatId, type = 'composing', coold
 const sendReaction = async (botInstance, chatId, messageId, command) => {
     try {
         const emoji = getEmojiForCommand(command);
-        console.log(`🔍 Reaction emoji for "${command}": ${emoji}`);
-
         await botInstance.sendMessage(chatId, {
             react: {
                 text: emoji,
                 key: { id: messageId, remoteJid: chatId },
             },
         });
-        console.log(`✅ Reaction "${emoji}" sent to ${chatId} (msg: ${messageId})`);
     } catch (error) {
         console.error(`❌ Failed to send reaction to ${chatId}:`, error);
     }
 };
 
-module.exports = { sendToChat, sendReaction, setDynamicPresence};
+module.exports = { sendToChat, sendReaction, setDynamicPresence };
