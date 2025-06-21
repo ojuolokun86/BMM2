@@ -11,16 +11,7 @@ const { useHybridAuthState } = require('../database/hybridAuthState');
 const { fetchWhatsAppWebVersion } = require('../utils/AppWebVersion'); // Import the function to fetch WhatsApp Web version
 const { listSessionsFromSupabase } = require('../database/models/supabaseAuthState'); // Import the function to list sessions from Supabase
 const QRCode = require('qrcode'); // Add this at the top of your file
-const logger = pino({
-  transport: {
-    target: 'pino-pretty',
-    options: {
-      colorize: true,
-      translateTime: 'SYS:standard',
-      ignore: 'pid,hostname'
-    }
-  }
-});
+const logger = pino();
 
 
 const sessionTimers = {};
