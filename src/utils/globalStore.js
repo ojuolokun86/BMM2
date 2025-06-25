@@ -18,6 +18,7 @@ const readReceiptSettings = {}; // Store read receipt settings for each chat
 const lmSocketInstances = {}; // Store LM socket instances
 const dndSettings = {};
 const groupKickAllState = {}; 
+const groupKickInactiveState = {};
 
 
 
@@ -131,4 +132,5 @@ module.exports = {
     lmSocketInstances,
     dndSettings,
     groupKickAllState,
+    groupKickInactiveState,
 };

@@ -14,14 +14,8 @@ const { handleFunCommand } = require('./funCommand'); // Import fun command hand
 const { handleProtectionCommand } = require('./protection'); // Import protection command handler
 const { addAnalyticsData } = require('../server/info'); // Import analytics functions
 const { emitAnalyticsUpdate } = require('../server/socket');
-const {
-    getMenuCategories,
-    getGeneralMenu,
-    getSettingsMenu,
-    getProtectionMenu,
-    getGroupMenu,
-    getFunMenu
-} = require('../utils/menu');
+const { menu } = require('../utils/menu');
+const { handleDownloadCommand } = require('./downloadCommand');
 
 
 
@@ -115,31 +109,12 @@ if (
     // Handle specific commands
     switch (command) {
 
-case 'menu': {
-    let menuMsg;
-    const category = (args[0] || '').toLowerCase();
-    switch (category) {
-        case 'general':
-            menuMsg = getGeneralMenu(userPrefix);
-            break;
-        case 'settings':
-            menuMsg = getSettingsMenu(userPrefix);
-            break;
-        case 'protection':
-            menuMsg = getProtectionMenu(userPrefix);
-            break;
-        case 'group':
-            menuMsg = getGroupMenu(userPrefix);
-            break;
-        case 'fun':
-            menuMsg = getFunMenu(userPrefix);
-            break;
-        default:
-            menuMsg = getMenuCategories(userPrefix);
-    }
-    await sendToChat(botInstance, remoteJid, { message: menuMsg });
-    return;
-}
+       case 'menu':
+        case 'help':
+            // Get the bot owner name from sock.user (if available)
+            const ownerName = (sock.user && (sock.user.name || sock.user.pushName)) || 'lash man';
+            await menu(sock, remoteJid, message, userPrefix, ownerName);
+            return;
         case 'poll':
             case 'endpoll':
             case 'announce':
@@ -173,6 +148,9 @@ case 'menu': {
             case 'yeskick':
             case 'canceldestroy':
             case 'yesdestroy':
+            case 'kickinactive':
+            case 'confirm':
+            case 'cancelk':
                 console.log(`📢 Routing "${command}" to groupCommand.js...`);
                 const handled = await handleGroupCommand(sock, userId, message, command, args, sender, null, botInstance, true);
                 if (handled) {
@@ -195,6 +173,11 @@ case 'menu': {
                 case 'view':
                 case 'deleteit':
                 case 'time':
+                case 'listgroup':
+                case 'listgroups':
+                case 'remove':
+                case 'leavegroup':
+                case 'ai':
                     console.log(`📜 Routing "${command}" to generalCommand.js...`);
                     const generalHandled = await handleGeneralCommand(sock, message, command, args, userId, remoteJid, botInstance, realSender, botOwnerIds, normalizedUserId, botLid, authId, );
                     if (generalHandled) {
@@ -203,7 +186,8 @@ case 'menu': {
                         console.log(`❌ Command "${command}" was not handled by generalCommand.js.`);
                     }
                     break;
-
+            // Handle settings commands
+                        case 'imagine':
                         case 'sticker':
                         case 'emoji':
                         case 'baka':
@@ -275,6 +259,10 @@ case 'menu': {
                 }
                 break;
 
+                case 'download':
+                await handleDownloadCommand(sock, botInstance, remoteJid, args);
+                return;
+
                 // ...inside your main switch(command)...
                 // case 'upload':
                 // if (!['gold', 'premium'].includes(subscriptionLevel)) {
@@ -323,7 +311,10 @@ case 'menu': {
             const randomResponse = unknownMessages[Math.floor(Math.random() * unknownMessages.length)];
 
             console.log(`❓ Unknown command: "${command}". Sending random response.`);
-            await sendToChat(botInstance, remoteJid, { message: randomResponse });
+            await sendToChat(botInstance, remoteJid, {
+                 message: randomResponse,
+                quotedMessage: message 
+             });
             return;
 
 }

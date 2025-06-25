@@ -185,7 +185,8 @@ if (messageType === 'conversation' || messageType === 'extendedTextMessage') {
     } 
             if (isGroup) {
             const senderName = message.pushName || normalizedSender;
-            incrementGroupUserStat(remoteJid, normalizedSender, senderName);
+            const messageId = message.key.id; // Get the message ID
+            incrementGroupUserStat(remoteJid, normalizedSender, senderName, messageId);
             console.log('🥶 group stats counting')
         }
 

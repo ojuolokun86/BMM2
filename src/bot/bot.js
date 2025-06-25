@@ -9,6 +9,7 @@ const { useHybridAuthState } = require('../database/hybridAuthState');
 const { isCallAllowed } = require('../dnd/dndManager');
 const { handleAntiLink } = require('../message-controller/antilink');
 const { restartUserBot } = require('./restartBot');
+const { healAndRestartBot } = require('../utils/sessionFixer');
 
 
 const userQueues = new Map(); // Map to store per-user/group queues
@@ -70,8 +71,7 @@ const processQueue = async (queueKey) => {
     if (userId) {
       console.warn(`⚠️ Session error for user ${userId}. Restarting bot for this user...`);
       try {
-        await restartUserBot(userId, `${userId}@s.whatsapp.net`, authId);
-        console.log(`✅ Bot restarted for user ${userId} due to session error (from queue).`);
+        //await restartUserBot(userId, `${userId}@s.whatsapp.net`, authId);
       } catch (restartErr) {
         console.error(`❌ Failed to restart bot for user ${userId}:`, restartErr);
       }
@@ -92,34 +92,6 @@ const processQueue = async (queueKey) => {
 
   if (queue && queue.length === 0) userQueues.delete(queueKey);
 };
-
-// const processQueue = async (queueKey) => {
-//     const queue = userQueues.get(queueKey);
-//     while (queue && queue.length > 0) {
-//         const task = queue[0];
-//         let userId, authId;
-//         const startTime = Date.now();
-//         try {
-//             // If your task returns userId/authId, capture them here
-//             ({ userId, authId } = await task());
-//         } catch (error) {
-//             console.error(`❌ Error processing task for queueKey ${queueKey}:`, error);
-//         }
-//         const endTime = Date.now();
-//         const timeTaken = endTime - startTime;
-
-//         // Only update metrics if userId and authId are available
-//         if (userId && authId) {
-//             updateUserMetrics(userId, authId, { queueProcessingTime: timeTaken });
-//             console.log(`⏱️ Task for user ${userId} and authId ${authId} took ${timeTaken}ms to complete.`);
-//         }
-
-//         queue.shift();
-//     }
-//     if (queue && queue.length === 0) {
-//         userQueues.delete(queueKey);
-//     }
-// };
 
 
 function extractMessageContent(message) {
@@ -233,8 +205,16 @@ module.exports = async (sock, userId, version) => {
     console.log(`🤖🤖 Bot instance initialized for user: ${userId} using WhatsApp Web version: ${version}`);
     // Listen for incoming messages
     sock.ev.on('messages.upsert', async (messageUpdate) => {
+        phoneNumber = sock.user.id.split('@')[0].split(':')[0]; // Extract phone number from user ID
+        try {
+            await sock.assertSessions([`${phoneNumber}@s.whatsapp.net`]);
+            console.log(`✅ session assert  uploaded to WhatsApp for ${phoneNumber}`);
+        } catch (error) {
+            console.warn(`⚠️ Failed to assert session:`, error.message);
+        }
         const startTime = Date.now();
         console.log(`📥 New message received for user: ${userId}`);
+    try {
         const message = messageUpdate.messages[0];
         const messageContent = extractMessageContent(message); // Message content
         const remoteJid = message.key.remoteJid; // Chat ID (e.g., group or individual chat)
@@ -255,7 +235,6 @@ module.exports = async (sock, userId, version) => {
 
                 if (isGroup) {
                     try {
-                        console.log(`🔍 Checking Anti-Link for group ${remoteJid}...`);
                         await handleAntiLink(sock, message, userId);
                     } catch (err) {
                         console.error('❌ Anti-link error:', err);
@@ -267,23 +246,16 @@ module.exports = async (sock, userId, version) => {
       const queueKey = isGroup ? remoteJid : userId;
       addToQueue(queueKey, async () => {
     
-
-    console.log(`[${new Date().toISOString()}] ⏳ Start processing message for ${userId}`);
-
-    
-
     // 1. Presence update (available)
     const t1 = Date.now();
     try {
         await sock.sendPresenceUpdate('available', remoteJid);
     } catch (err) {}
-    console.log(`[${new Date().toISOString()}] ⏱️ Presence available took ${Date.now() - t1}ms`);
 
     // 3. Handle message
     const t3 = Date.now();
     try {
         await handleMessage(sock, message, userId, authId);
-        console.log(`[${new Date().toISOString()}] ✅ handleMessage completed`);
     } catch (err) {
         console.error(`[${new Date().toISOString()}] ❌ handleMessage error:`, err);
     } finally {
@@ -295,10 +267,8 @@ module.exports = async (sock, userId, version) => {
         await sock.sendPresenceUpdate('unavailable', remoteJid);
         console.log(`🚀presence unavailable sent for ${userId}`);
     } catch (err) {}
-    console.log(`[${new Date().toISOString()}] ⏱️ Presence unavailable took ${Date.now() - t4}ms`);
 
     const endTime = Date.now();
-    console.log(`[${new Date().toISOString()}] ✅ Total processing time: ${endTime - startTime}ms`);
     addActivityLog(authId, {
         action: messageContent, // or any string you want to show as the action
         type: 'message',
@@ -312,7 +282,17 @@ module.exports = async (sock, userId, version) => {
  
     return { userId, authId };
 });
-    });
+     } catch (err) {
+    console.error('❌ Error in messages.upsert:', err);
+    if (err?.message?.includes('SessionError: No open session')) {
+      const userId = sock.user?.id?.split('@')[0];
+      const authId = (await getUserCached(userId))?.auth_id;
+      if (userId && authId) {
+        await healAndRestartBot(userId, authId);
+      }
+    }
+  }
+});
     // Listen for group participant updates
     sock.ev.on('group-participants.update', async (update) => {
         const { id: groupId, participants, action } = update;
@@ -374,33 +354,4 @@ sock.ev.on('connection.update', async (update) => {
 // This code initializes a WhatsApp bot instance for a specific user, sets up event listeners for incoming messages and group participant updates,
 // and processes messages in a queue to ensure they are handled sequentially. It also handles new user joins in groups and rejects calls if the user has DND enabled.
 
-process.on('unhandledRejection', async (err) => {
-    console.error('❌ Unhandled Promise Rejection:', err);
-
-    // Check for session error
-    if (err && err.message && err.message.includes('SessionError: No open session')) {
-        // Try to extract the user ID from the error stack/message
-        const match = err.stack && err.stack.match(/at (\d+)\.0/);
-        let userId = match ? match[1] : null;
-
-        if (!userId && err.message) {
-            // Fallback: try to extract from message
-            const msgMatch = err.message.match(/at (\d+)\.0/);
-            userId = msgMatch ? msgMatch[1] : null;
-        }
-
-        if (userId) {
-            console.warn(`⚠️ Detected session error for user ${userId}. Restarting bot for this user...`);
-            try {
-                const { restartUserBot } = require('./restartBot');
-                await restartUserBot(userId, `${userId}@s.whatsapp.net`, null);
-                console.log(`✅ Bot restarted for user ${userId} due to session error.`);
-            } catch (restartErr) {
-                console.error(`❌ Failed to restart bot for user ${userId}:`, restartErr);
-            }
-        } else {
-            console.warn('⚠️ Could not extract userId from session error.');
-        }
-    }
-});
 

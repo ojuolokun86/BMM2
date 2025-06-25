@@ -1,18 +1,23 @@
-# Use Node.js 22 base image
-FROM node:22
+# Use Node.js base image (21.x as per your engines)
+FROM node:21
 
-# Set working directory inside container
+# Install ffmpeg and yt-dlp
+RUN apt-get update && \
+    apt-get install -y ffmpeg python3-pip && \
+    pip3 install -U yt-dlp
+
+# Create app directory
 WORKDIR /app
 
-# Copy package files and install dependencies
+# Copy package.json and install dependencies
 COPY package*.json ./
 RUN npm install
 
-# Copy the rest of the files (including .env)
+# Copy all files
 COPY . .
 
-# Set environment variables (optional - Railway auto injects)
-ENV NODE_ENV=production
+# Expose the port your app runs on
+EXPOSE 3000
 
-# Start the bot
-CMD ["node", "--max-old-space-size=4096", "src/index.js"]
+# Start your app
+CMD ["node", "src/index.js"]

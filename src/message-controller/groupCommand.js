@@ -19,6 +19,7 @@ const { getGroupOwner } = require('../utils/groupData');
 const { handleGroupStatsCommand, handleActiveMembersCommand, handleInactiveMembersCommand } = require('./groupStats');
 const { requestKickAllConfirmation, confirmKickAll, cancelKickAll } = require('./kickAll');
 const {requestDestroyGroupConfirmation, confirmDestroyGroup, cancelDestroyGroup, } = require('./destroyGroupUtils'); // Import Anti-Link functions
+const { requestKickInactiveConfirmation, confirmKickInactive, cancelKickInactive } = require('./kickInactive');
 
 
 const { 
@@ -61,7 +62,10 @@ const handleGroupCommand = async (sock, userId, message, command, args, sender, 
 
     if (!isGroup) {
         console.log(`❌ Command "${command}" can only be used in groups.`);
-        await sendToChat(botInstance, remoteJid, { message: '❌ This command can only be used in groups.' });
+        await sendToChat(botInstance, remoteJid, { 
+            message: '❌ This command can only be used in groups.', 
+            quotedMessage: message 
+        });
         return true; // Command handled
     }
      // Check if the sender is allowed based on group mode
@@ -652,7 +656,7 @@ const handleGroupCommand = async (sock, userId, message, command, args, sender, 
                                                                     adminList,
                                                                 });
 
-                                                            await sendToChat(botInstance, remoteJid, { message: infoMsg, mentions: [owner, ...admins.map(a => a.id)] });
+                                                            await sendToChat(botInstance, remoteJid, { message: infoMsg, mentions: [owner, ...admins.map(a => a.id)], quotedMessage: message });
                                                             console.log('✅ Group info sent.');
                                                         } catch (error) {
                                                             console.error('❌ Failed to fetch group info:', error);
@@ -1262,6 +1266,20 @@ const handleGroupCommand = async (sock, userId, message, command, args, sender, 
                                                         await sendToChat(botInstance, remoteJid, { message: '❌ Failed to retrieve inactive members. Please try again later.' });
                                                         return true;
                                                     }
+                                                    case 'kickinactive':
+                                                        if (!botIsAdmin) {
+                                                            await sendToChat(botInstance, remoteJid, { message: '❌ The bot must be an admin to execute this command.' });
+                                                            return true;
+                                                        }
+                                                        await requestKickInactiveConfirmation(sock, remoteJid, botInstance, userId);
+                                                        return true;
+                                                    case 'confirm':
+                                                        await confirmKickInactive(remoteJid);
+                                                        return true;
+                                                    case 'cancelk':
+                                                        cancelKickInactive(remoteJid);
+                                                        await sendToChat(botInstance, remoteJid, { message: '⏹️ Kick inactive operation cancellation requested.' });
+                                                        return true;
                                                     
                                         case 'leave':
                                             console.log('🚪 Executing "leave" command...');

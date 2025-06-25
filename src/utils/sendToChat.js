@@ -47,12 +47,11 @@ const sendToChat = async (botInstance, chatId, options = {}) => {
                 caption: caption || '',
                 mentions,
                 ...(resolvedType === 'audio' || resolvedType === 'voice' ? { ptt: resolvedType === 'voice' } : {}),
-                ...(quoted ? { quoted } : {})
             };
             if (!hasMentions) {
                 payload.contextInfo = {
+                    forwardingScore:999, 
                     isForwarded: true,
-                    forwardingScore: 10,
                     forwardedNewsletterMessageInfo: {
                         newsletterJid: '120363403127154832@newsletter',
                         newsletterName: '🤖BMM-BOT🤖',
@@ -65,12 +64,11 @@ const sendToChat = async (botInstance, chatId, options = {}) => {
             payload = {
                 text: formattedMessage,
                 mentions,
-                ...(quoted ? { quoted } : {})
             };
             if (!hasMentions) {
                 payload.contextInfo = {
                     isForwarded: true,
-                    forwardingScore: 10,
+                    forwardingScore: 999,
                     forwardedNewsletterMessageInfo: {
                         newsletterJid: '120363403127154832@newsletter',
                         newsletterName: '🤖BMM-BOT🤖',
@@ -82,7 +80,7 @@ const sendToChat = async (botInstance, chatId, options = {}) => {
             throw new Error('Either "message" or "media" must be provided.');
         }
 
-        await botInstance.sendMessage(chatId, payload);
+        await botInstance.sendMessage(chatId, payload, quoted ? { quoted } : {});
 
     } catch (error) {
         console.error(`❌ Error sending message to ${chatId}:`, error);
