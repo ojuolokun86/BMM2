@@ -18,6 +18,7 @@
     "libsignal": "^2.0.1",
     "moment-timezone": "^0.6.0",
     "mongodb": "^6.16.0",
+    "node-fetch": "^2.7.0",
     "nodemailer": "^6.10.0",
     "pino": "^9.7.0",
     "piscina": "^5.0.0",
