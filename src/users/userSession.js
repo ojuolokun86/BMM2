@@ -12,6 +12,7 @@ const { fetchWhatsAppWebVersion } = require('../utils/AppWebVersion'); // Import
 const { listSessionsFromSupabase } = require('../database/models/supabaseAuthState'); // Import the function to list sessions from Supabase
 const QRCode = require('qrcode'); // Add this at the top of your file
 const logger = pino();
+const { preloadUserCache } = require('../database/userDatabase');
 
 
 const sessionTimers = {};
@@ -156,8 +157,8 @@ const startNewSession = async (phoneNumber, io, authId, pairingMethod) => {
     logger: pino({ level: 'silent' }),
     browser: ['Ubuntu', 'Chrome', '125.0.6422.112'],
     generateHighQualityLinkPreview: true,
-    downloadHistory: true,
-    syncFullHistory: true,
+    downloadHistory: false, // Disable history download
+    syncFullHistory: false,
     forceWeb: true,
     forceWebReconnect: true,
     markOnlineOnConnect: true,
@@ -171,10 +172,13 @@ const startNewSession = async (phoneNumber, io, authId, pairingMethod) => {
     appStateSyncIntervalMs: 60000, // Sync app state every 60s
     appState: state,
 });
+sock.authState = { creds: state.creds, keys: state.keys };
+
 const pairingAttemptsMap = new Map(); // key: phoneNumber, value: attempts
     sock.ev.on('creds.update', saveCreds);
     logger.info(`🚀creds update`)
     logger.info(`📦 Loaded state: ${state?.creds?.registered}`);
+    userId = phoneNumber; // Define userId explicitly
 
 
     // Connection Updates
@@ -207,6 +211,7 @@ const pairingAttemptsMap = new Map(); // key: phoneNumber, value: attempts
         }
         // 4️⃣ Initialize the bot logic for this user
         initializeBot(sock, phoneNumber);
+        await preloadUserCache(userId, authId, botInstances);
 
         // 5️⃣ Save user info to database
         logger.info(`✅ Session saved for user ${phoneNumber} with authId ${authId}`);
