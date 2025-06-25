@@ -5,7 +5,10 @@ const { deleteUserData } = require('../database/userDatabase');
 const { fullyStopSession } = require('./userSession');
 const pino = require('pino');
 const { useHybridAuthState } = require('../database/hybridAuthState');
-const logger = pino();
+const logger = pino({
+  level: 'info', // or 'debug', 'error', etc.
+  timestamp: pino.stdTimeFunctions.isoTime,
+});
 
 // Minimal in-memory auth state for registration (no file, no DB)
 const inMemorySessions = {}; // <--- store by phoneNumber
